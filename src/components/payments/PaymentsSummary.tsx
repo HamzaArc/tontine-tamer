@@ -2,7 +2,9 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Clock, DollarSign, User, Calendar } from 'lucide-react';
+import { Clock, DollarSign, User, Calendar, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface PaymentsSummaryProps {
   cycleId: string;
@@ -20,29 +22,159 @@ interface PaymentSummary {
   paidMembersCount: number;
 }
 
-// Mock data for payment summary
-const getMockPaymentSummary = (cycleId: string): PaymentSummary => {
-  // In a real app, this would be fetched from the backend
-  return {
-    cycleNumber: 2,
-    recipientName: 'Jane Smith',
-    tontineName: 'Family Savings',
-    payoutDate: '2023-06-15',
-    totalAmount: 2000,
-    currentAmount: 1500,
-    completionPercentage: 75,
-    membersCount: 8,
-    paidMembersCount: 6,
-  };
-};
-
 const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
   
   useEffect(() => {
-    // In a real app, this would be an API call
-    setSummary(getMockPaymentSummary(cycleId));
+    const fetchPaymentSummary = async () => {
+      if (!cycleId) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        // Fetch cycle details with tontine info
+        const { data: cycleData, error: cycleError } = await supabase
+          .from('cycles')
+          .select(`
+            id,
+            cycle_number,
+            end_date,
+            recipient_id,
+            tontine_id,
+            tontines (
+              name,
+              amount
+            )
+          `)
+          .eq('id', cycleId)
+          .single();
+          
+        if (cycleError) throw cycleError;
+        
+        if (!cycleData) {
+          setLoading(false);
+          return;
+        }
+        
+        // Get recipient name if available
+        let recipientName = 'Unassigned';
+        if (cycleData.recipient_id) {
+          const { data: memberData, error: memberError } = await supabase
+            .from('members')
+            .select('name')
+            .eq('id', cycleData.recipient_id)
+            .single();
+          
+          if (!memberError && memberData) {
+            recipientName = memberData.name;
+          }
+        }
+        
+        // Count total members in tontine
+        const { count: totalMembers, error: membersError } = await supabase
+          .from('members')
+          .select('*', { count: 'exact', head: true })
+          .eq('tontine_id', cycleData.tontine_id);
+          
+        if (membersError) throw membersError;
+        
+        // Count paid members for this cycle
+        const { data: payments, error: paymentsError } = await supabase
+          .from('payments')
+          .select('amount, status')
+          .eq('cycle_id', cycleId);
+          
+        if (paymentsError) throw paymentsError;
+        
+        const paidMembers = payments?.filter(payment => payment.status === 'paid') || [];
+        const paidMembersCount = paidMembers.length;
+        const currentAmount = paidMembers.reduce((sum, payment) => sum + Number(payment.amount), 0);
+        
+        // Calculate total expected amount
+        const membersCount = totalMembers || 0;
+        const amountPerMember = cycleData.tontines.amount || 0;
+        const totalAmount = membersCount * amountPerMember;
+        
+        // Calculate completion percentage
+        const completionPercentage = totalAmount > 0 
+          ? Math.round((currentAmount / totalAmount) * 100) 
+          : 0;
+        
+        setSummary({
+          cycleNumber: cycleData.cycle_number,
+          recipientName,
+          tontineName: cycleData.tontines.name,
+          payoutDate: cycleData.end_date,
+          totalAmount,
+          currentAmount,
+          completionPercentage,
+          membersCount,
+          paidMembersCount
+        });
+      } catch (error: any) {
+        console.error('Error fetching payment summary:', error);
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to fetch payment summary',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchPaymentSummary();
+    
+    // Set up realtime subscriptions
+    const paymentsChannel = supabase
+      .channel('payments-changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'payments',
+          filter: `cycle_id=eq.${cycleId}`
+        }, 
+        () => {
+          fetchPaymentSummary();
+        }
+      )
+      .subscribe();
+      
+    const cyclesChannel = supabase
+      .channel('cycles-changes-summary')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'cycles',
+          filter: `id=eq.${cycleId}`
+        }, 
+        () => {
+          fetchPaymentSummary();
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(paymentsChannel);
+      supabase.removeChannel(cyclesChannel);
+    };
   }, [cycleId]);
+  
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="pt-6 flex justify-center items-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </CardContent>
+      </Card>
+    );
+  }
   
   if (!summary) {
     return null;
@@ -106,7 +238,7 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
             </div>
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <DollarSign className="h-3 w-3" />
-              ${summary.totalAmount / summary.membersCount} per member
+              ${summary.membersCount > 0 ? (summary.totalAmount / summary.membersCount).toFixed(2) : 0} per member
             </div>
           </div>
         </div>

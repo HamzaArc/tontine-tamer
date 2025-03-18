@@ -12,6 +12,7 @@ import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Dashboard from "./pages/Dashboard";
 import Tontines from "./pages/Tontines";
+import TontineEdit from "./pages/TontineEdit";
 import Cycles from "./pages/Cycles";
 import Payments from "./pages/Payments";
 import Reports from "./pages/Reports";
@@ -68,6 +69,18 @@ const App = () => (
                     <div className="flex-1">
                       <TontineDetails />
                     </div>
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/tontines/:id/edit" 
+              element={
+                <ProtectedRoute>
+                  <div className="flex w-full">
+                    <SideNavigation />
+                    <TontineEdit />
                   </div>
                 </ProtectedRoute>
               } 

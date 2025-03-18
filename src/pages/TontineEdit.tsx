@@ -1,22 +1,17 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
-import { Button } from '@/components/ui/button';
-import { Plus, Loader2 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import PageContainer from '@/components/layout/PageContainer';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+import { format } from 'date-fns';
+import { CalendarIcon, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
 import {
   Form,
   FormField,
@@ -35,15 +30,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { format } from 'date-fns';
+import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -57,34 +50,66 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-const CreateTontineButton: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+const TontineEdit: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
       description: '',
-      amount: 100,
+      amount: 0,
       frequency: 'Monthly',
       startDate: new Date(),
     },
   });
 
-  const onSubmit = async (data: FormValues) => {
-    if (!user) {
-      toast({
-        title: 'Error',
-        description: 'You must be logged in to create a tontine.',
-        variant: 'destructive',
-      });
-      return;
-    }
+  useEffect(() => {
+    const fetchTontine = async () => {
+      if (!id) return;
 
-    setIsSubmitting(true);
+      try {
+        const { data, error } = await supabase
+          .from('tontines')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          form.reset({
+            name: data.name,
+            description: data.description || '',
+            amount: data.amount,
+            frequency: data.frequency,
+            startDate: new Date(data.start_date),
+          });
+        }
+      } catch (error: any) {
+        console.error('Error fetching tontine:', error);
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to load tontine details',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTontine();
+  }, [id, form, toast]);
+
+  const onSubmit = async (data: FormValues) => {
+    if (!user || !id) return;
+
+    setSubmitting(true);
     
     try {
       // Calculate an estimated end date based on frequency
@@ -94,65 +119,66 @@ const CreateTontineButton: React.FC = () => {
       // Simple estimation for end date
       switch (data.frequency) {
         case 'Weekly':
-          endDate.setMonth(endDate.getMonth() + 3); // 3 months for weekly
+          endDate.setMonth(endDate.getMonth() + 3);
           break;
         case 'Bi-weekly':
-          endDate.setMonth(endDate.getMonth() + 6); // 6 months for bi-weekly
+          endDate.setMonth(endDate.getMonth() + 6);
           break;
         case 'Monthly':
-          endDate.setFullYear(endDate.getFullYear() + 1); // 1 year for monthly
+          endDate.setFullYear(endDate.getFullYear() + 1);
           break;
         case 'Quarterly':
-          endDate.setFullYear(endDate.getFullYear() + 2); // 2 years for quarterly
+          endDate.setFullYear(endDate.getFullYear() + 2);
           break;
       }
       
-      const { error } = await supabase.from('tontines').insert({
-        name: data.name,
-        description: data.description || null,
-        amount: data.amount,
-        frequency: data.frequency,
-        start_date: format(data.startDate, 'yyyy-MM-dd'),
-        end_date: format(endDate, 'yyyy-MM-dd'),
-        created_by: user.id,
-      });
+      const { error } = await supabase
+        .from('tontines')
+        .update({
+          name: data.name,
+          description: data.description || null,
+          amount: data.amount,
+          frequency: data.frequency,
+          start_date: format(data.startDate, 'yyyy-MM-dd'),
+          end_date: format(endDate, 'yyyy-MM-dd'),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
       
       if (error) throw error;
       
       toast({
-        title: 'Tontine created',
-        description: `${data.name} has been created successfully.`,
+        title: 'Tontine updated',
+        description: `${data.name} has been updated successfully.`,
       });
       
-      setIsOpen(false);
-      form.reset();
+      navigate(`/tontines/${id}`);
     } catch (error: any) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to create tontine. Please try again.',
+        description: error.message || 'Failed to update tontine. Please try again.',
         variant: 'destructive',
       });
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
   };
 
+  if (loading) {
+    return (
+      <PageContainer title="Edit Tontine">
+        <div className="flex justify-center items-center h-96">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </PageContainer>
+    );
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Tontine
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>Create New Tontine</DialogTitle>
-          <DialogDescription>
-            Enter the details of your new tontine. You can add members after creating it.
-          </DialogDescription>
-        </DialogHeader>
-        
+    <PageContainer title="Edit Tontine">
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-2xl font-bold mb-6">Edit Tontine</h1>
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
@@ -182,6 +208,7 @@ const CreateTontineButton: React.FC = () => {
                     <Textarea 
                       placeholder="Monthly savings for family goals..." 
                       {...field} 
+                      value={field.value || ''}
                     />
                   </FormControl>
                   <FormMessage />
@@ -223,7 +250,7 @@ const CreateTontineButton: React.FC = () => {
                     <FormLabel>Frequency</FormLabel>
                     <Select 
                       onValueChange={field.onChange} 
-                      defaultValue={field.value}
+                      value={field.value}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -277,8 +304,7 @@ const CreateTontineButton: React.FC = () => {
                         selected={field.value}
                         onSelect={field.onChange}
                         initialFocus
-                        disabled={(date) => date < new Date()}
-                        className={cn("p-3 pointer-events-auto")}
+                        className="p-3"
                       />
                     </PopoverContent>
                   </Popover>
@@ -290,24 +316,29 @@ const CreateTontineButton: React.FC = () => {
               )}
             />
             
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSubmitting}>
+            <div className="flex justify-end gap-4">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => navigate(`/tontines/${id}`)} 
+                disabled={submitting}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
+              <Button type="submit" disabled={submitting}>
+                {submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
+                    Updating...
                   </>
-                ) : 'Create Tontine'}
+                ) : 'Update Tontine'}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
         </Form>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </PageContainer>
   );
 };
 
-export default CreateTontineButton;
+export default TontineEdit;

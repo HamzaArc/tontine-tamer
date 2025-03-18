@@ -1,33 +1,159 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageContainer from '@/components/layout/PageContainer';
 import PaymentsList from '@/components/payments/PaymentsList';
 import CycleSelector from '@/components/payments/CycleSelector';
 import PaymentsSummary from '@/components/payments/PaymentsSummary';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
-// Mock data for tontines and cycles
-const MOCK_TONTINES = [
-  { id: '1', name: 'Family Savings' },
-  { id: '2', name: 'Friends Group' },
-  { id: '3', name: 'Work Colleagues' },
-];
+interface Tontine {
+  id: string;
+  name: string;
+}
 
-const MOCK_CYCLES = [
-  { id: '1', number: 1, tontineId: '1', recipientName: 'John Doe' },
-  { id: '2', number: 2, tontineId: '1', recipientName: 'Jane Smith' },
-  { id: '3', number: 1, tontineId: '2', recipientName: 'Alex Johnson' },
-  { id: '4', number: 2, tontineId: '2', recipientName: 'Sarah Williams' },
-  { id: '5', number: 1, tontineId: '3', recipientName: 'Michael Brown' },
-];
+interface Cycle {
+  id: string;
+  cycle_number: number;
+  tontine_id: string;
+  recipient_name?: string;
+}
 
 const Payments: React.FC = () => {
   const [searchParams] = useSearchParams();
   const initialCycleId = searchParams.get('cycle');
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(initialCycleId);
+  const [tontines, setTontines] = useState<Tontine[]>([]);
+  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (initialCycleId) {
+      setSelectedCycleId(initialCycleId);
+    }
+  }, [initialCycleId]);
+
+  useEffect(() => {
+    const fetchTontinesAndCycles = async () => {
+      if (!user) return;
+
+      try {
+        // Fetch tontines
+        const { data: tontinesData, error: tontinesError } = await supabase
+          .from('tontines')
+          .select('id, name')
+          .order('created_at', { ascending: false });
+          
+        if (tontinesError) throw tontinesError;
+        
+        setTontines(tontinesData || []);
+        
+        // Fetch all cycles across all tontines
+        const { data: cyclesData, error: cyclesError } = await supabase
+          .from('cycles')
+          .select(`
+            id, 
+            cycle_number, 
+            tontine_id, 
+            recipient_id
+          `)
+          .order('tontine_id', { ascending: true })
+          .order('cycle_number', { ascending: true });
+          
+        if (cyclesError) throw cyclesError;
+        
+        // Enhance cycles with recipient names
+        const enhancedCycles = await Promise.all(
+          (cyclesData || []).map(async (cycle) => {
+            let recipientName = 'Unassigned';
+            
+            if (cycle.recipient_id) {
+              const { data: memberData, error: memberError } = await supabase
+                .from('members')
+                .select('name')
+                .eq('id', cycle.recipient_id)
+                .single();
+              
+              if (!memberError && memberData) {
+                recipientName = memberData.name;
+              }
+            }
+            
+            return {
+              ...cycle,
+              recipient_name: recipientName
+            };
+          })
+        );
+        
+        setCycles(enhancedCycles);
+        
+        // If no cycle is selected but we have cycles, select the first one
+        if (!selectedCycleId && enhancedCycles.length > 0) {
+          setSelectedCycleId(enhancedCycles[0].id);
+        }
+      } catch (error: any) {
+        console.error('Error fetching data:', error);
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to fetch data',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchTontinesAndCycles();
+    
+    // Set up realtime subscription for tontines and cycles
+    const tontinesChannel = supabase
+      .channel('tontines-changes-payments')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'tontines' 
+        },
+        () => fetchTontinesAndCycles()
+      )
+      .subscribe();
+      
+    const cyclesChannel = supabase
+      .channel('cycles-changes-payments')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'cycles' 
+        },
+        () => fetchTontinesAndCycles()
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(tontinesChannel);
+      supabase.removeChannel(cyclesChannel);
+    };
+  }, [user]);
   
   // Find the selected cycle
-  const selectedCycle = MOCK_CYCLES.find(cycle => cycle.id === selectedCycleId);
+  const selectedCycle = cycles.find(cycle => cycle.id === selectedCycleId);
+  
+  if (loading) {
+    return (
+      <PageContainer title="Payments">
+        <div className="flex justify-center items-center h-96">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </PageContainer>
+    );
+  }
   
   return (
     <PageContainer title="Payments">
@@ -36,8 +162,8 @@ const Payments: React.FC = () => {
           <h1 className="text-2xl font-bold">Manage Payments</h1>
           
           <CycleSelector 
-            tontines={MOCK_TONTINES} 
-            cycles={MOCK_CYCLES} 
+            tontines={tontines} 
+            cycles={cycles} 
             selectedCycleId={selectedCycleId} 
             onSelectCycle={setSelectedCycleId}
           />
@@ -50,10 +176,21 @@ const Payments: React.FC = () => {
           </>
         ) : (
           <div className="flex flex-col items-center justify-center p-12 border rounded-lg bg-muted/20">
-            <h2 className="text-xl font-medium mb-2">Select a Cycle</h2>
-            <p className="text-muted-foreground text-center max-w-md">
-              Please select a tontine and cycle from the dropdown above to view and manage payments.
-            </p>
+            {cycles.length > 0 ? (
+              <>
+                <h2 className="text-xl font-medium mb-2">Select a Cycle</h2>
+                <p className="text-muted-foreground text-center max-w-md">
+                  Please select a tontine and cycle from the dropdown above to view and manage payments.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-medium mb-2">No Cycles Found</h2>
+                <p className="text-muted-foreground text-center max-w-md">
+                  You haven't created any cycles yet. Go to the Cycles page to create your first payment cycle.
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>

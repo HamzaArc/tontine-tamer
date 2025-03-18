@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Search, Plus, Users, Edit, Trash2, EyeIcon, Loader2 } from 'lucide-react';
+import { Search, Plus, RefreshCw, Edit, Trash2, EyeIcon, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Link } from 'react-router-dom';
 import { 
@@ -47,68 +47,92 @@ const TontineList: React.FC = () => {
   const [tontines, setTontines] = useState<Tontine[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   
-  useEffect(() => {
+  const fetchTontines = async () => {
     if (!user) return;
     
-    const fetchTontines = async () => {
-      setLoading(true);
-      try {
-        // Fetch tontines
-        const { data: tontinesData, error: tontinesError } = await supabase
-          .from('tontines')
-          .select('*')
-          .order('created_at', { ascending: false });
+    setRefreshing(true);
+    try {
+      // Fetch tontines
+      const { data: tontinesData, error: tontinesError } = await supabase
+        .from('tontines')
+        .select('*')
+        .order('created_at', { ascending: false });
+        
+      if (tontinesError) throw tontinesError;
+      
+      // For each tontine, fetch member count
+      const tontinesWithMembers = await Promise.all(
+        (tontinesData || []).map(async (tontine) => {
+          const { count, error: membersError } = await supabase
+            .from('members')
+            .select('*', { count: 'exact', head: true })
+            .eq('tontine_id', tontine.id);
+            
+          if (membersError) throw membersError;
           
-        if (tontinesError) throw tontinesError;
-        
-        // For each tontine, fetch member count
-        const tontinesWithMembers = await Promise.all(
-          (tontinesData || []).map(async (tontine) => {
-            const { count, error: membersError } = await supabase
-              .from('members')
-              .select('*', { count: 'exact', head: true })
-              .eq('tontine_id', tontine.id);
-              
-            if (membersError) throw membersError;
-            
-            // Determine tontine status
-            const now = new Date();
-            const startDate = new Date(tontine.start_date);
-            const endDate = tontine.end_date ? new Date(tontine.end_date) : null;
-            
-            let status = 'active';
-            if (startDate > now) {
-              status = 'upcoming';
-            } else if (endDate && endDate < now) {
-              status = 'completed';
-            }
-            
-            return {
-              ...tontine,
-              members_count: count || 0,
-              status,
-            };
-          })
-        );
-        
-        setTontines(tontinesWithMembers);
-      } catch (error: any) {
-        toast({
-          title: 'Error',
-          description: error.message || 'Failed to fetch tontines',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchTontines();
-  }, [user, toast]);
+          // Determine tontine status
+          const now = new Date();
+          const startDate = new Date(tontine.start_date);
+          const endDate = tontine.end_date ? new Date(tontine.end_date) : null;
+          
+          let status = 'active';
+          if (startDate > now) {
+            status = 'upcoming';
+          } else if (endDate && endDate < now) {
+            status = 'completed';
+          }
+          
+          return {
+            ...tontine,
+            members_count: count || 0,
+            status,
+          };
+        })
+      );
+      
+      setTontines(tontinesWithMembers);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to fetch tontines',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchTontines();
+      
+      // Set up realtime subscription
+      const channel = supabase
+        .channel('tontines-changes')
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'tontines' 
+          }, 
+          () => {
+            // Refresh when changes are detected
+            fetchTontines();
+          }
+        )
+        .subscribe();
+      
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user]);
   
   const handleDelete = async (id: string) => {
     setDeletingId(id);
@@ -120,6 +144,7 @@ const TontineList: React.FC = () => {
       
       if (error) throw error;
       
+      // Remove from UI immediately (will also be updated by subscription)
       setTontines(tontines.filter(tontine => tontine.id !== id));
       
       toast({
@@ -137,6 +162,10 @@ const TontineList: React.FC = () => {
     }
   };
   
+  const handleRefresh = () => {
+    fetchTontines();
+  };
+  
   const filteredTontines = tontines.filter(tontine => 
     tontine.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (tontine.description && tontine.description.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -147,14 +176,26 @@ const TontineList: React.FC = () => {
       <CardHeader>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <CardTitle>Your Tontines</CardTitle>
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search tontines..."
-              className="pl-8"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="flex gap-2 w-full md:w-auto">
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={handleRefresh} 
+              disabled={refreshing}
+              className="flex-shrink-0"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="sr-only">Refresh</span>
+            </Button>
+            <div className="relative w-full md:w-72">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search tontines..."
+                className="pl-8"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
         </div>
       </CardHeader>
