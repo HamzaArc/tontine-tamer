@@ -8,7 +8,7 @@ import {
   CardTitle 
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Search, Check, X, Bell, User, MoreHorizontal } from 'lucide-react';
+import { Search, Check, X, Bell, User, MoreHorizontal, RefreshCw, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { 
   Table, 
@@ -28,108 +28,146 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Member {
   id: string;
   name: string;
   email: string;
   phone: string;
+}
+
+interface Payment {
+  id: string;
+  member_id: string;
   status: 'paid' | 'pending';
   amount: number;
-  paymentDate?: string;
+  payment_date?: string;
+  member?: Member;
 }
 
 interface PaymentsListProps {
   cycleId: string;
 }
 
-// Mock data for members and their payment status
-const generateMockMembers = (cycleId: string): Member[] => {
-  // In a real app, this would be fetched from the backend based on cycleId
-  return [
-    {
-      id: '1',
-      name: 'John Doe',
-      email: 'john@example.com',
-      phone: '+1234567890',
-      status: 'paid',
-      amount: 250,
-      paymentDate: '2023-05-02',
-    },
-    {
-      id: '2',
-      name: 'Jane Smith',
-      email: 'jane@example.com',
-      phone: '+1987654321',
-      status: 'paid',
-      amount: 250,
-      paymentDate: '2023-05-03',
-    },
-    {
-      id: '3',
-      name: 'Alex Johnson',
-      email: 'alex@example.com',
-      phone: '+1122334455',
-      status: 'paid',
-      amount: 250,
-      paymentDate: '2023-05-05',
-    },
-    {
-      id: '4',
-      name: 'Sarah Williams',
-      email: 'sarah@example.com',
-      phone: '+1555666777',
-      status: 'paid',
-      amount: 250,
-      paymentDate: '2023-05-06',
-    },
-    {
-      id: '5',
-      name: 'Michael Brown',
-      email: 'michael@example.com',
-      phone: '+1888999000',
-      status: 'paid',
-      amount: 250,
-      paymentDate: '2023-05-07',
-    },
-    {
-      id: '6',
-      name: 'Emily Davis',
-      email: 'emily@example.com',
-      phone: '+1222333444',
-      status: 'paid',
-      amount: 250,
-      paymentDate: '2023-05-10',
-    },
-    {
-      id: '7',
-      name: 'David Wilson',
-      email: 'david@example.com',
-      phone: '+1777888999',
-      status: 'pending',
-      amount: 250,
-    },
-    {
-      id: '8',
-      name: 'Lisa Miller',
-      email: 'lisa@example.com',
-      phone: '+1444555666',
-      status: 'pending',
-      amount: 250,
-    },
-  ];
-};
-
 const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
-  const [members, setMembers] = useState<Member[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
   
+  const fetchPayments = async () => {
+    if (!cycleId) {
+      setLoading(false);
+      return;
+    }
+
+    setRefreshing(true);
+    try {
+      // Fetch the cycle to get tontine_id
+      const { data: cycleData, error: cycleError } = await supabase
+        .from('cycles')
+        .select('tontine_id')
+        .eq('id', cycleId)
+        .single();
+      
+      if (cycleError) throw cycleError;
+      
+      // Get all members of the tontine
+      const { data: membersData, error: membersError } = await supabase
+        .from('members')
+        .select('id, name, email, phone')
+        .eq('tontine_id', cycleData.tontine_id)
+        .eq('is_active', true);
+      
+      if (membersError) throw membersError;
+      
+      // Get existing payments for this cycle
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('id, member_id, status, amount, payment_date')
+        .eq('cycle_id', cycleId);
+      
+      if (paymentsError) throw paymentsError;
+      
+      // Create a map of existing payments by member_id
+      const paymentsByMemberId: Record<string, Payment> = {};
+      paymentsData?.forEach(payment => {
+        paymentsByMemberId[payment.member_id] = payment;
+      });
+      
+      // Calculate default amount - Get cycle amount and divide by number of members
+      const { data: cycleAmountData, error: amountError } = await supabase
+        .from('cycles')
+        .select('*, tontines(amount)')
+        .eq('id', cycleId)
+        .single();
+        
+      if (amountError) throw amountError;
+      
+      const totalAmount = cycleAmountData.tontines.amount;
+      const defaultAmount = membersData?.length > 0 ? totalAmount / membersData.length : 0;
+      
+      // Create comprehensive payments list with member details
+      const allPayments: Payment[] = membersData?.map(member => {
+        const existingPayment = paymentsByMemberId[member.id];
+        
+        if (existingPayment) {
+          return {
+            ...existingPayment,
+            member
+          };
+        } else {
+          // Create a payment record if none exists for this member
+          return {
+            id: 'temp-' + member.id, // Will be replaced when payment is recorded
+            member_id: member.id,
+            status: 'pending',
+            amount: Math.round(defaultAmount * 100) / 100, // Round to 2 decimal places
+            member
+          };
+        }
+      });
+      
+      setPayments(allPayments || []);
+    } catch (error: any) {
+      console.error('Error fetching payments:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to load payments',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+  
   useEffect(() => {
-    // In a real app, this would be an API call
-    setMembers(generateMockMembers(cycleId));
+    fetchPayments();
+    
+    // Set up realtime subscription for payments changes
+    const paymentsChannel = supabase
+      .channel('payments-list-changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'payments',
+          filter: `cycle_id=eq.${cycleId}`
+        }, 
+        () => {
+          fetchPayments();
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(paymentsChannel);
+    };
   }, [cycleId]);
   
   const handleRecordPayment = (memberId: string) => {
@@ -137,26 +175,58 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
     setIsRecordPaymentOpen(true);
   };
   
-  const handlePaymentRecorded = (memberId: string, amount: number) => {
-    setMembers(members.map(member => 
-      member.id === memberId 
-        ? { 
-            ...member, 
-            status: 'paid', 
-            paymentDate: new Date().toISOString(),
-            amount
-          } 
-        : member
-    ));
-    
-    toast({
-      title: 'Payment recorded',
-      description: `Payment of $${amount} has been recorded.`,
-    });
+  const handlePaymentRecorded = async (memberId: string, amount: number) => {
+    try {
+      // Check if payment already exists
+      const selectedPayment = payments.find(p => p.member_id === memberId);
+      
+      if (selectedPayment && !selectedPayment.id.startsWith('temp-')) {
+        // Update existing payment
+        const { error } = await supabase
+          .from('payments')
+          .update({
+            amount,
+            status: 'paid',
+            payment_date: new Date().toISOString(),
+          })
+          .eq('id', selectedPayment.id);
+          
+        if (error) throw error;
+      } else {
+        // Create new payment
+        const { error } = await supabase
+          .from('payments')
+          .insert({
+            cycle_id: cycleId,
+            member_id: memberId,
+            amount,
+            status: 'paid',
+            payment_date: new Date().toISOString(),
+            payment_method: 'manual',
+          });
+          
+        if (error) throw error;
+      }
+      
+      toast({
+        title: 'Payment recorded',
+        description: `Payment of $${amount} has been recorded.`,
+      });
+      
+      // Refresh payments list
+      fetchPayments();
+    } catch (error: any) {
+      console.error('Error recording payment:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to record payment',
+        variant: 'destructive',
+      });
+    }
   };
   
   const handleSendReminder = (memberId: string) => {
-    const member = members.find(m => m.id === memberId);
+    const member = payments.find(p => p.member_id === memberId)?.member;
     if (!member) return;
     
     toast({
@@ -166,20 +236,54 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
   };
   
   const handleSendAllReminders = () => {
-    const pendingMembers = members.filter(m => m.status === 'pending');
+    const pendingPayments = payments.filter(p => p.status === 'pending');
     
     toast({
       title: 'Reminders sent',
-      description: `Payment reminders have been sent to ${pendingMembers.length} members.`,
+      description: `Payment reminders have been sent to ${pendingPayments.length} members.`,
     });
   };
   
-  const filteredMembers = members.filter(member => 
-    member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    member.email.toLowerCase().includes(searchQuery.toLowerCase())
+  const handleReversePayment = async (memberId: string) => {
+    try {
+      const selectedPayment = payments.find(p => p.member_id === memberId);
+      if (!selectedPayment || selectedPayment.id.startsWith('temp-')) return;
+      
+      const { error } = await supabase
+        .from('payments')
+        .update({
+          status: 'pending',
+          payment_date: null,
+        })
+        .eq('id', selectedPayment.id);
+        
+      if (error) throw error;
+      
+      const memberName = selectedPayment.member?.name || 'Member';
+      
+      toast({
+        title: 'Payment reversed',
+        description: `Payment from ${memberName} has been marked as pending.`,
+      });
+      
+      // Refresh payments list
+      fetchPayments();
+    } catch (error: any) {
+      console.error('Error reversing payment:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to reverse payment',
+        variant: 'destructive',
+      });
+    }
+  };
+  
+  const filteredPayments = payments.filter(payment => 
+    payment.member?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    payment.member?.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
   
-  const pendingCount = members.filter(m => m.status === 'pending').length;
+  const pendingCount = payments.filter(p => p.status === 'pending').length;
   
   return (
     <Card>
@@ -188,7 +292,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
           <div>
             <CardTitle>Member Contributions</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              {members.length - pendingCount} of {members.length} members have paid
+              {payments.length - pendingCount} of {payments.length} members have paid
             </p>
           </div>
           
@@ -203,6 +307,16 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
               />
             </div>
             
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={fetchPayments} 
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="sr-only">Refresh</span>
+            </Button>
+            
             {pendingCount > 0 && (
               <Button variant="outline" onClick={handleSendAllReminders}>
                 <Bell className="mr-2 h-4 w-4" />
@@ -213,126 +327,135 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead className="hidden md:table-cell">Amount</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="hidden md:table-cell">Payment Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMembers.length > 0 ? (
-                filteredMembers.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <div className="font-medium flex items-center gap-1">
-                          <User className="h-3 w-3 text-muted-foreground" />
-                          {member.name}
+        {loading ? (
+          <div className="flex justify-center items-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Member</TableHead>
+                  <TableHead className="hidden md:table-cell">Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Payment Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredPayments.length > 0 ? (
+                  filteredPayments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <div className="font-medium flex items-center gap-1">
+                            <User className="h-3 w-3 text-muted-foreground" />
+                            {payment.member?.name || 'Unknown Member'}
+                          </div>
+                          <span className="text-sm text-muted-foreground">{payment.member?.email || 'No email'}</span>
                         </div>
-                        <span className="text-sm text-muted-foreground">{member.email}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      ${member.amount}
-                    </TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant={member.status === 'paid' ? 'default' : 'secondary'}
-                        className="flex items-center gap-1 w-fit"
-                      >
-                        {member.status === 'paid' ? (
-                          <>
-                            <Check className="h-3 w-3" />
-                            Paid
-                          </>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        ${payment.amount}
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={payment.status === 'paid' ? 'default' : 'secondary'}
+                          className="flex items-center gap-1 w-fit"
+                        >
+                          {payment.status === 'paid' ? (
+                            <>
+                              <Check className="h-3 w-3" />
+                              Paid
+                            </>
+                          ) : (
+                            <>
+                              <X className="h-3 w-3" />
+                              Pending
+                            </>
+                          )}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {payment.payment_date ? (
+                          format(new Date(payment.payment_date), 'MMM d, yyyy')
                         ) : (
-                          <>
-                            <X className="h-3 w-3" />
-                            Pending
-                          </>
+                          <span className="text-muted-foreground">—</span>
                         )}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {member.paymentDate ? (
-                        format(new Date(member.paymentDate), 'MMM d, yyyy')
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {payment.status === 'pending' ? (
+                            <>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleRecordPayment(payment.member_id)}
+                              >
+                                Record Payment
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handleSendReminder(payment.member_id)}
+                              >
+                                <Bell className="h-4 w-4" />
+                                <span className="sr-only">Send Reminder</span>
+                              </Button>
+                            </>
+                          ) : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleRecordPayment(payment.member_id)}>
+                                  Modify Payment
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleReversePayment(payment.member_id)}>
+                                  Reverse Payment
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center">
+                      {searchQuery ? (
+                        <div>
+                          <p>No members found matching your search.</p>
+                          <Button 
+                            variant="link" 
+                            onClick={() => setSearchQuery('')}
+                            className="mt-2"
+                          >
+                            Clear search
+                          </Button>
+                        </div>
                       ) : (
-                        <span className="text-muted-foreground">—</span>
+                        <p>No members found for this cycle.</p>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {member.status === 'pending' ? (
-                          <>
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => handleRecordPayment(member.id)}
-                            >
-                              Record Payment
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => handleSendReminder(member.id)}
-                            >
-                              <Bell className="h-4 w-4" />
-                              <span className="sr-only">Send Reminder</span>
-                            </Button>
-                          </>
-                        ) : (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleRecordPayment(member.id)}>
-                                Modify Payment
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => {
-                                setMembers(members.map(m => 
-                                  m.id === member.id 
-                                    ? { ...m, status: 'pending', paymentDate: undefined } 
-                                    : m
-                                ));
-                                toast({
-                                  title: 'Payment reversed',
-                                  description: `Payment from ${member.name} has been marked as pending.`,
-                                });
-                              }}>
-                                Reverse Payment
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    No members found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
       
       <RecordPaymentDialog 
         isOpen={isRecordPaymentOpen}
         onOpenChange={setIsRecordPaymentOpen}
         memberId={selectedMemberId || ''}
-        member={members.find(m => m.id === selectedMemberId) || null}
+        member={payments.find(p => p.member_id === selectedMemberId)?.member || null}
         onRecordPayment={handlePaymentRecorded}
       />
     </Card>
