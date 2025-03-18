@@ -6,8 +6,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
+import Tontines from "./pages/Tontines";
+import Cycles from "./pages/Cycles";
+import Payments from "./pages/Payments";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 import SideNavigation from "./components/layout/SideNavigation";
+import TontineDetails from "./components/tontines/TontineDetails";
 
 const queryClient = new QueryClient();
 
@@ -31,15 +36,23 @@ const App = () => (
             } 
           />
           
-          {/* Placeholder routes that would use the same layout */}
           <Route 
             path="/tontines" 
             element={
               <div className="flex w-full">
                 <SideNavigation />
-                <div className="flex-1 p-8">
-                  <h1 className="text-2xl font-bold mb-4">Tontines</h1>
-                  <p>Tontine management page coming soon.</p>
+                <Tontines />
+              </div>
+            } 
+          />
+          
+          <Route 
+            path="/tontines/:id" 
+            element={
+              <div className="flex w-full">
+                <SideNavigation />
+                <div className="flex-1">
+                  <TontineDetails />
                 </div>
               </div>
             } 
@@ -50,10 +63,7 @@ const App = () => (
             element={
               <div className="flex w-full">
                 <SideNavigation />
-                <div className="flex-1 p-8">
-                  <h1 className="text-2xl font-bold mb-4">Cycles</h1>
-                  <p>Cycle management page coming soon.</p>
-                </div>
+                <Cycles />
               </div>
             } 
           />
@@ -63,10 +73,7 @@ const App = () => (
             element={
               <div className="flex w-full">
                 <SideNavigation />
-                <div className="flex-1 p-8">
-                  <h1 className="text-2xl font-bold mb-4">Payments</h1>
-                  <p>Payment management page coming soon.</p>
-                </div>
+                <Payments />
               </div>
             } 
           />
@@ -76,10 +83,7 @@ const App = () => (
             element={
               <div className="flex w-full">
                 <SideNavigation />
-                <div className="flex-1 p-8">
-                  <h1 className="text-2xl font-bold mb-4">Reports</h1>
-                  <p>Reports page coming soon.</p>
-                </div>
+                <Reports />
               </div>
             } 
           />
