@@ -6,6 +6,8 @@ import { Plus } from 'lucide-react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -57,7 +59,9 @@ type FormValues = z.infer<typeof formSchema>;
 
 const CreateTontineButton: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -70,17 +74,67 @@ const CreateTontineButton: React.FC = () => {
     },
   });
 
-  const onSubmit = (data: FormValues) => {
-    // In a real app, this would send data to the backend
-    console.log('Form submitted:', data);
+  const onSubmit = async (data: FormValues) => {
+    if (!user) {
+      toast({
+        title: 'Error',
+        description: 'You must be logged in to create a tontine.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
     
-    toast({
-      title: 'Tontine created',
-      description: `${data.name} has been created successfully.`,
-    });
-    
-    setIsOpen(false);
-    form.reset();
+    try {
+      // Calculate an estimated end date based on frequency
+      const startDate = new Date(data.startDate);
+      let endDate = new Date(startDate);
+      
+      // Simple estimation for end date
+      switch (data.frequency) {
+        case 'Weekly':
+          endDate.setMonth(endDate.getMonth() + 3); // 3 months for weekly
+          break;
+        case 'Bi-weekly':
+          endDate.setMonth(endDate.getMonth() + 6); // 6 months for bi-weekly
+          break;
+        case 'Monthly':
+          endDate.setFullYear(endDate.getFullYear() + 1); // 1 year for monthly
+          break;
+        case 'Quarterly':
+          endDate.setFullYear(endDate.getFullYear() + 2); // 2 years for quarterly
+          break;
+      }
+      
+      const { error } = await supabase.from('tontines').insert({
+        name: data.name,
+        description: data.description || null,
+        amount: data.amount,
+        frequency: data.frequency,
+        start_date: format(data.startDate, 'yyyy-MM-dd'),
+        end_date: format(endDate, 'yyyy-MM-dd'),
+        created_by: user.id,
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: 'Tontine created',
+        description: `${data.name} has been created successfully.`,
+      });
+      
+      setIsOpen(false);
+      form.reset();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create tontine. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -237,10 +291,12 @@ const CreateTontineButton: React.FC = () => {
             />
             
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button type="submit">Create Tontine</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Creating...' : 'Create Tontine'}
+              </Button>
             </DialogFooter>
           </form>
         </Form>

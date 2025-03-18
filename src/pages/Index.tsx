@@ -3,8 +3,11 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, CheckCircle, Users, Calendar, CreditCard, PieChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Index = () => {
+  const { user } = useAuth();
+  
   const featureItems = [
     {
       icon: <Users className="h-6 w-6 text-primary" />,
@@ -41,12 +44,20 @@ const Index = () => {
               <span className="ml-2 font-semibold text-xl">TontineTamer</span>
             </div>
             <div className="flex items-center space-x-4">
-              <Link to="/dashboard" className="text-sm font-medium hover:text-primary transition-colors">
-                Dashboard
-              </Link>
-              <Button asChild>
-                <Link to="/dashboard">Get Started</Link>
-              </Button>
+              {user ? (
+                <Button asChild>
+                  <Link to="/dashboard">Dashboard</Link>
+                </Button>
+              ) : (
+                <>
+                  <Link to="/signin" className="text-sm font-medium hover:text-primary transition-colors">
+                    Sign In
+                  </Link>
+                  <Button asChild>
+                    <Link to="/signup">Sign Up</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -66,15 +77,28 @@ const Index = () => {
             TontineTamer helps you create, manage, and track tontine groups with an intuitive interface designed for everyone.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button asChild size="lg" className="px-8 rounded-full h-12">
-              <Link to="/dashboard">
-                Get Started
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
-            <Button variant="outline" size="lg" className="px-8 rounded-full h-12">
-              Learn More
-            </Button>
+            {user ? (
+              <Button asChild size="lg" className="px-8 rounded-full h-12">
+                <Link to="/dashboard">
+                  Go to Dashboard
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+            ) : (
+              <>
+                <Button asChild size="lg" className="px-8 rounded-full h-12">
+                  <Link to="/signup">
+                    Get Started
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild size="lg" className="px-8 rounded-full h-12">
+                  <Link to="/signin">
+                    Sign In
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -163,12 +187,21 @@ const Index = () => {
           <p className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto">
             Join thousands of users who are already benefiting from our secure and user-friendly platform.
           </p>
-          <Button asChild size="lg" className="px-8 rounded-full h-12">
-            <Link to="/dashboard">
-              Get Started Now
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Link>
-          </Button>
+          {user ? (
+            <Button asChild size="lg" className="px-8 rounded-full h-12">
+              <Link to="/dashboard">
+                Go to Dashboard
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
+            </Button>
+          ) : (
+            <Button asChild size="lg" className="px-8 rounded-full h-12">
+              <Link to="/signup">
+                Get Started Now
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
+            </Button>
+          )}
         </div>
       </section>
 

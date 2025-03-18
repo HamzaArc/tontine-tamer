@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   Card, 
   CardContent, 
@@ -16,7 +16,8 @@ import {
   Users, 
   Clock, 
   ChevronLeft,
-  Edit
+  Edit,
+  Loader2
 } from 'lucide-react';
 import { 
   Tabs, 
@@ -28,32 +29,221 @@ import { Badge } from '@/components/ui/badge';
 import { AddMemberDialog } from './AddMemberDialog';
 import { MembersList } from './MembersList';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 
-// Mock data for a tontine
-const MOCK_TONTINE = {
-  id: '1',
-  name: 'Family Savings',
-  description: 'Monthly savings for family goals',
-  members: [
-    { id: '1', name: 'John Doe', email: 'john@example.com', phone: '+1234567890', status: 'active' },
-    { id: '2', name: 'Jane Smith', email: 'jane@example.com', phone: '+1987654321', status: 'active' },
-    { id: '3', name: 'Alex Johnson', email: 'alex@example.com', phone: '+1122334455', status: 'active' },
-  ],
-  amount: 250,
-  frequency: 'Monthly',
-  startDate: '2023-01-15',
-  status: 'active',
-  totalCollected: 2000,
-  nextPaymentDate: '2023-05-15',
-  completionDate: '2023-09-15',
-};
+interface Tontine {
+  id: string;
+  name: string;
+  description: string | null;
+  amount: number;
+  frequency: string;
+  start_date: string;
+  end_date: string | null;
+  created_at: string;
+  status?: string;
+  members_count?: number;
+  total_collected?: number;
+  next_payment_date?: string;
+}
+
+interface Member {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  is_active: boolean;
+}
 
 const TontineDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [tontine, setTontine] = useState(MOCK_TONTINE);
+  const [tontine, setTontine] = useState<Tontine | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
+  const [loading, setLoading] = useState(true);
+  const [membersLoading, setMembersLoading] = useState(true);
+  const { toast } = useToast();
+  const navigate = useNavigate();
   
-  // In a real app, you would fetch the tontine data based on the ID
+  useEffect(() => {
+    const fetchTontineDetails = async () => {
+      if (!id) return;
+      
+      setLoading(true);
+      try {
+        // Fetch tontine details
+        const { data: tontineData, error: tontineError } = await supabase
+          .from('tontines')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (tontineError) throw tontineError;
+        if (!tontineData) {
+          toast({
+            title: 'Error',
+            description: 'Tontine not found',
+            variant: 'destructive',
+          });
+          navigate('/tontines');
+          return;
+        }
+        
+        // Count members
+        const { count: membersCount, error: countError } = await supabase
+          .from('members')
+          .select('*', { count: 'exact', head: true })
+          .eq('tontine_id', id);
+          
+        if (countError) throw countError;
+        
+        // Calculate tontine status
+        const now = new Date();
+        const startDate = new Date(tontineData.start_date);
+        const endDate = tontineData.end_date ? new Date(tontineData.end_date) : null;
+        
+        let status = 'active';
+        if (startDate > now) {
+          status = 'upcoming';
+        } else if (endDate && endDate < now) {
+          status = 'completed';
+        }
+        
+        // For demonstration, calculate some mock financial data
+        // In a real app, this would come from actual payment records
+        const totalCollected = Math.round(tontineData.amount * (membersCount || 0) * 0.75);
+        
+        // Calculate next payment date
+        let nextPaymentDate = new Date(startDate);
+        while (nextPaymentDate <= now) {
+          switch (tontineData.frequency) {
+            case 'Weekly':
+              nextPaymentDate.setDate(nextPaymentDate.getDate() + 7);
+              break;
+            case 'Bi-weekly':
+              nextPaymentDate.setDate(nextPaymentDate.getDate() + 14);
+              break;
+            case 'Monthly':
+              nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+              break;
+            case 'Quarterly':
+              nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 3);
+              break;
+          }
+        }
+        
+        setTontine({
+          ...tontineData,
+          status,
+          members_count: membersCount || 0,
+          total_collected: totalCollected,
+          next_payment_date: format(nextPaymentDate, 'yyyy-MM-dd'),
+        });
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to fetch tontine details',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchTontineDetails();
+  }, [id, toast, navigate]);
+  
+  useEffect(() => {
+    const fetchMembers = async () => {
+      if (!id) return;
+      
+      setMembersLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('members')
+          .select('*')
+          .eq('tontine_id', id)
+          .order('name');
+          
+        if (error) throw error;
+        
+        setMembers(data || []);
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to fetch members',
+          variant: 'destructive',
+        });
+      } finally {
+        setMembersLoading(false);
+      }
+    };
+    
+    fetchMembers();
+  }, [id, toast]);
+  
+  const handleMemberAdded = () => {
+    // Refresh the members list when a new member is added
+    const fetchMembers = async () => {
+      if (!id) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('members')
+          .select('*')
+          .eq('tontine_id', id)
+          .order('name');
+          
+        if (error) throw error;
+        
+        setMembers(data || []);
+        
+        // Also update the count in the tontine object
+        if (tontine) {
+          setTontine({
+            ...tontine,
+            members_count: (data || []).length,
+          });
+        }
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to refresh members',
+          variant: 'destructive',
+        });
+      }
+    };
+    
+    fetchMembers();
+  };
+  
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+  
+  if (!tontine) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" asChild>
+            <Link to="/tontines">
+              <ChevronLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <h1 className="text-2xl font-bold">Tontine Not Found</h1>
+        </div>
+        <p>The tontine you're looking for doesn't exist or you don't have permission to view it.</p>
+        <Button asChild>
+          <Link to="/tontines">Back to Tontines</Link>
+        </Button>
+      </div>
+    );
+  }
   
   return (
     <div className="space-y-6">
@@ -80,7 +270,7 @@ const TontineDetails: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:w-auto md:grid-cols-3">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="members">Members ({tontine.members.length})</TabsTrigger>
+          <TabsTrigger value="members">Members ({tontine.members_count})</TabsTrigger>
           <TabsTrigger value="cycles" className="hidden md:flex">Cycles</TabsTrigger>
         </TabsList>
         
@@ -119,7 +309,7 @@ const TontineDetails: React.FC = () => {
                     <h3 className="text-sm font-medium text-muted-foreground">Start Date</h3>
                     <p className="flex items-center gap-1">
                       <Calendar className="h-4 w-4 text-primary" />
-                      {new Date(tontine.startDate).toLocaleDateString()}
+                      {format(parseISO(tontine.start_date), 'PPP')}
                     </p>
                   </div>
                   
@@ -127,7 +317,7 @@ const TontineDetails: React.FC = () => {
                     <h3 className="text-sm font-medium text-muted-foreground">Members</h3>
                     <p className="flex items-center gap-1">
                       <Users className="h-4 w-4 text-primary" />
-                      {tontine.members.length}
+                      {tontine.members_count}
                     </p>
                   </div>
                 </div>
@@ -142,13 +332,13 @@ const TontineDetails: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <h3 className="text-sm font-medium text-muted-foreground">Total Collected</h3>
-                    <p className="text-2xl font-bold text-primary">${tontine.totalCollected}</p>
+                    <p className="text-2xl font-bold text-primary">${tontine.total_collected}</p>
                   </div>
                   
                   <div>
                     <h3 className="text-sm font-medium text-muted-foreground">Next Payment</h3>
                     <p className="text-lg">
-                      {new Date(tontine.nextPaymentDate).toLocaleDateString()}
+                      {format(parseISO(tontine.next_payment_date || tontine.start_date), 'PPP')}
                     </p>
                   </div>
                   
@@ -156,7 +346,7 @@ const TontineDetails: React.FC = () => {
                     <h3 className="text-sm font-medium text-muted-foreground">Estimated Completion</h3>
                     <p className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
-                      {new Date(tontine.completionDate).toLocaleDateString()}
+                      {tontine.end_date ? format(parseISO(tontine.end_date), 'PPP') : 'Not set'}
                     </p>
                   </div>
                 </div>
@@ -183,15 +373,37 @@ const TontineDetails: React.FC = () => {
                   Manage members of this tontine
                 </CardDescription>
               </div>
-              <AddMemberDialog tontineId={id || ''} />
+              <AddMemberDialog 
+                tontineId={id || ''} 
+                onMemberAdded={handleMemberAdded}
+              />
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px] rounded-md border p-4">
-                <MembersList 
-                  members={tontine.members} 
-                  tontineId={id || ''} 
-                />
-              </ScrollArea>
+              {membersLoading ? (
+                <div className="flex justify-center items-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : members.length > 0 ? (
+                <ScrollArea className="h-[400px] rounded-md border p-4">
+                  <MembersList 
+                    members={members} 
+                    tontineId={id || ''} 
+                    onMemberRemoved={handleMemberAdded}
+                  />
+                </ScrollArea>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 border rounded-lg">
+                  <Users className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No Members Yet</h3>
+                  <p className="text-muted-foreground text-center mb-6 max-w-md">
+                    This tontine doesn't have any members yet. Add members to start tracking contributions.
+                  </p>
+                  <AddMemberDialog 
+                    tontineId={id || ''} 
+                    onMemberAdded={handleMemberAdded}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -2,10 +2,11 @@
 import React, { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -40,10 +41,12 @@ type FormValues = z.infer<typeof formSchema>;
 
 interface AddMemberDialogProps {
   tontineId: string;
+  onMemberAdded?: () => void;
 }
 
-export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({ tontineId }) => {
+export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({ tontineId, onMemberAdded }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<FormValues>({
@@ -55,17 +58,40 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({ tontineId }) =
     },
   });
 
-  const onSubmit = (data: FormValues) => {
-    // In a real app, this would send data to the backend
-    console.log('New member:', data, 'for tontine:', tontineId);
-    
-    toast({
-      title: 'Member added',
-      description: `${data.name} has been added to the tontine.`,
-    });
-    
-    setIsOpen(false);
-    form.reset();
+  const onSubmit = async (data: FormValues) => {
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from('members')
+        .insert({
+          tontine_id: tontineId,
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+        });
+
+      if (error) throw error;
+      
+      toast({
+        title: 'Member added',
+        description: `${data.name} has been added to the tontine.`,
+      });
+      
+      setIsOpen(false);
+      form.reset();
+      
+      if (onMemberAdded) {
+        onMemberAdded();
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to add member. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -139,10 +165,19 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({ tontineId }) =
             />
             
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button type="submit">Add Member</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  'Add Member'
+                )}
+              </Button>
             </DialogFooter>
           </form>
         </Form>

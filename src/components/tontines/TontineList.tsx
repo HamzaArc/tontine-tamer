@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Search, Plus, Users, Edit, Trash2, EyeIcon } from 'lucide-react';
+import { Search, Plus, Users, Edit, Trash2, EyeIcon, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Link } from 'react-router-dom';
 import { 
@@ -26,57 +26,120 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { format } from 'date-fns';
 
-// Mock data for tontines
-const MOCK_TONTINES = [
-  {
-    id: '1',
-    name: 'Family Savings',
-    description: 'Monthly savings for family goals',
-    members: 8,
-    amount: 250,
-    frequency: 'Monthly',
-    startDate: '2023-01-15',
-    status: 'active',
-  },
-  {
-    id: '2',
-    name: 'Friends Group',
-    description: 'Vacation fund with college friends',
-    members: 5,
-    amount: 100,
-    frequency: 'Bi-weekly',
-    startDate: '2023-03-01',
-    status: 'active',
-  },
-  {
-    id: '3',
-    name: 'Work Colleagues',
-    description: 'Office emergency fund',
-    members: 12,
-    amount: 50,
-    frequency: 'Monthly',
-    startDate: '2022-11-10',
-    status: 'completed',
-  },
-];
+interface Tontine {
+  id: string;
+  name: string;
+  description: string | null;
+  amount: number;
+  frequency: string;
+  start_date: string;
+  end_date: string | null;
+  created_at: string;
+  status: string;
+  members_count?: number;
+}
 
 const TontineList: React.FC = () => {
-  const [tontines, setTontines] = useState(MOCK_TONTINES);
+  const [tontines, setTontines] = useState<Tontine[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
   
-  const handleDelete = (id: string) => {
-    setTontines(tontines.filter(tontine => tontine.id !== id));
-    toast({
-      title: "Tontine deleted",
-      description: "The tontine has been successfully deleted.",
-    });
+  useEffect(() => {
+    if (!user) return;
+    
+    const fetchTontines = async () => {
+      setLoading(true);
+      try {
+        // Fetch tontines
+        const { data: tontinesData, error: tontinesError } = await supabase
+          .from('tontines')
+          .select('*')
+          .order('created_at', { ascending: false });
+          
+        if (tontinesError) throw tontinesError;
+        
+        // For each tontine, fetch member count
+        const tontinesWithMembers = await Promise.all(
+          (tontinesData || []).map(async (tontine) => {
+            const { count, error: membersError } = await supabase
+              .from('members')
+              .select('*', { count: 'exact', head: true })
+              .eq('tontine_id', tontine.id);
+              
+            if (membersError) throw membersError;
+            
+            // Determine tontine status
+            const now = new Date();
+            const startDate = new Date(tontine.start_date);
+            const endDate = tontine.end_date ? new Date(tontine.end_date) : null;
+            
+            let status = 'active';
+            if (startDate > now) {
+              status = 'upcoming';
+            } else if (endDate && endDate < now) {
+              status = 'completed';
+            }
+            
+            return {
+              ...tontine,
+              members_count: count || 0,
+              status,
+            };
+          })
+        );
+        
+        setTontines(tontinesWithMembers);
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to fetch tontines',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchTontines();
+  }, [user, toast]);
+  
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      const { error } = await supabase
+        .from('tontines')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      setTontines(tontines.filter(tontine => tontine.id !== id));
+      
+      toast({
+        title: "Tontine deleted",
+        description: "The tontine has been successfully deleted.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete tontine",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingId(null);
+    }
   };
   
   const filteredTontines = tontines.filter(tontine => 
     tontine.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    tontine.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (tontine.description && tontine.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
   
   return (
@@ -96,100 +159,135 @@ const TontineList: React.FC = () => {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead className="hidden md:table-cell">Members</TableHead>
-                <TableHead className="hidden md:table-cell">Amount</TableHead>
-                <TableHead className="hidden md:table-cell">Frequency</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTontines.length > 0 ? (
-                filteredTontines.map((tontine) => (
-                  <TableRow key={tontine.id}>
-                    <TableCell>
-                      <div className="font-medium">{tontine.name}</div>
-                      <div className="text-sm text-muted-foreground md:hidden">
-                        {tontine.members} members · ${tontine.amount} · {tontine.frequency}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">{tontine.members}</TableCell>
-                    <TableCell className="hidden md:table-cell">${tontine.amount}</TableCell>
-                    <TableCell className="hidden md:table-cell">{tontine.frequency}</TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant={tontine.status === 'active' ? 'default' : 'secondary'}
-                      >
-                        {tontine.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          asChild
+        {loading ? (
+          <div className="flex justify-center items-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="hidden md:table-cell">Members</TableHead>
+                  <TableHead className="hidden md:table-cell">Amount</TableHead>
+                  <TableHead className="hidden md:table-cell">Frequency</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTontines.length > 0 ? (
+                  filteredTontines.map((tontine) => (
+                    <TableRow key={tontine.id}>
+                      <TableCell>
+                        <div className="font-medium">{tontine.name}</div>
+                        <div className="text-sm text-muted-foreground md:hidden">
+                          {tontine.members_count} members · ${tontine.amount} · {tontine.frequency}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">{tontine.members_count}</TableCell>
+                      <TableCell className="hidden md:table-cell">${tontine.amount}</TableCell>
+                      <TableCell className="hidden md:table-cell">{tontine.frequency}</TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={tontine.status === 'active' ? 'default' : 'secondary'}
                         >
-                          <Link to={`/tontines/${tontine.id}`}>
-                            <EyeIcon className="h-4 w-4" />
-                            <span className="sr-only">View</span>
-                          </Link>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          asChild
-                        >
-                          <Link to={`/tontines/${tontine.id}/edit`}>
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">Edit</span>
-                          </Link>
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <Trash2 className="h-4 w-4" />
-                              <span className="sr-only">Delete</span>
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will permanently delete the tontine "{tontine.name}" and all associated data.
-                                This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction 
-                                onClick={() => handleDelete(tontine.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              >
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
+                          {tontine.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            asChild
+                          >
+                            <Link to={`/tontines/${tontine.id}`}>
+                              <EyeIcon className="h-4 w-4" />
+                              <span className="sr-only">View</span>
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            asChild
+                          >
+                            <Link to={`/tontines/${tontine.id}/edit`}>
+                              <Edit className="h-4 w-4" />
+                              <span className="sr-only">Edit</span>
+                            </Link>
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <Trash2 className="h-4 w-4" />
+                                <span className="sr-only">Delete</span>
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently delete the tontine "{tontine.name}" and all associated data.
+                                  This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction 
+                                  onClick={() => handleDelete(tontine.id)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  disabled={deletingId === tontine.id}
+                                >
+                                  {deletingId === tontine.id ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      Deleting...
+                                    </>
+                                  ) : (
+                                    'Delete'
+                                  )}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center">
+                      {searchQuery ? (
+                        <div>
+                          <p>No tontines found matching "{searchQuery}".</p>
+                          <Button 
+                            variant="link" 
+                            onClick={() => setSearchQuery('')}
+                            className="mt-2"
+                          >
+                            Clear search
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-6">
+                          <p className="mb-4">You haven't created any tontines yet.</p>
+                          <Button asChild>
+                            <Link to="/tontines">
+                              <Plus className="mr-2 h-4 w-4" />
+                              Create Your First Tontine
+                            </Link>
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
-                    No tontines found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
