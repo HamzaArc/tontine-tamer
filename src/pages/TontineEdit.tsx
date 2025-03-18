@@ -38,6 +38,9 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 
+// Define the valid frequency values
+type FrequencyType = 'Weekly' | 'Bi-weekly' | 'Monthly' | 'Quarterly';
+
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   description: z.string().optional(),
@@ -71,23 +74,27 @@ const TontineEdit: React.FC = () => {
 
   useEffect(() => {
     const fetchTontine = async () => {
-      if (!id) return;
+      if (!id || !user) return;
 
       try {
         const { data, error } = await supabase
           .from('tontines')
           .select('*')
           .eq('id', id)
+          .eq('created_by', user.id)
           .single();
 
         if (error) throw error;
 
         if (data) {
+          // Convert the database frequency to our enum type
+          const frequency = data.frequency as FrequencyType;
+          
           form.reset({
             name: data.name,
             description: data.description || '',
             amount: data.amount,
-            frequency: data.frequency,
+            frequency: frequency,
             startDate: new Date(data.start_date),
           });
         }
@@ -104,7 +111,7 @@ const TontineEdit: React.FC = () => {
     };
 
     fetchTontine();
-  }, [id, form, toast]);
+  }, [id, form, toast, user]);
 
   const onSubmit = async (data: FormValues) => {
     if (!user || !id) return;
@@ -143,7 +150,8 @@ const TontineEdit: React.FC = () => {
           end_date: format(endDate, 'yyyy-MM-dd'),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('created_by', user.id);
       
       if (error) throw error;
       

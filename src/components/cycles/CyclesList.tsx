@@ -105,7 +105,9 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             ...cycle,
             recipient_name: recipientName,
             amount: tontineData.amount,
-            contributions_count: contributionsCount
+            contributions_count: contributionsCount,
+            // Ensure status is properly typed
+            status: cycle.status as 'upcoming' | 'active' | 'completed'
           };
         })
       );

@@ -38,6 +38,7 @@ const Cycles: React.FC = () => {
         const { data, error } = await supabase
           .from('tontines')
           .select('id, name')
+          .eq('created_by', user.id)
           .order('created_at', { ascending: false });
           
         if (error) throw error;
@@ -69,7 +70,8 @@ const Cycles: React.FC = () => {
         { 
           event: '*', 
           schema: 'public', 
-          table: 'tontines' 
+          table: 'tontines',
+          filter: `created_by=eq.${user?.id}`
         }, 
         () => {
           fetchTontines();
@@ -80,7 +82,7 @@ const Cycles: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, selectedTontineId]);
   
   if (loading) {
     return (

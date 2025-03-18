@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   Select,
   SelectContent,
@@ -17,9 +17,9 @@ interface Tontine {
 
 interface Cycle {
   id: string;
-  number: number;
-  tontineId: string;
-  recipientName: string;
+  cycle_number: number; 
+  tontine_id: string;
+  recipient_name?: string;
 }
 
 interface CycleSelectorProps {
@@ -45,7 +45,7 @@ const CycleSelector: React.FC<CycleSelectorProps> = ({
       </SelectTrigger>
       <SelectContent>
         {tontines.map((tontine) => {
-          const tontineCycles = cycles.filter(cycle => cycle.tontineId === tontine.id);
+          const tontineCycles = cycles.filter(cycle => cycle.tontine_id === tontine.id);
           if (tontineCycles.length === 0) return null;
           
           return (
@@ -53,7 +53,7 @@ const CycleSelector: React.FC<CycleSelectorProps> = ({
               <SelectLabel>{tontine.name}</SelectLabel>
               {tontineCycles.map((cycle) => (
                 <SelectItem key={cycle.id} value={cycle.id}>
-                  Cycle #{cycle.number} ({cycle.recipientName})
+                  Cycle #{cycle.cycle_number} ({cycle.recipient_name})
                 </SelectItem>
               ))}
             </SelectGroup>

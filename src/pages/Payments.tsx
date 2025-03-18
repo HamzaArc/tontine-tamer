@@ -47,6 +47,7 @@ const Payments: React.FC = () => {
         const { data: tontinesData, error: tontinesError } = await supabase
           .from('tontines')
           .select('id, name')
+          .eq('created_by', user.id)
           .order('created_at', { ascending: false });
           
         if (tontinesError) throw tontinesError;
@@ -67,9 +68,15 @@ const Payments: React.FC = () => {
           
         if (cyclesError) throw cyclesError;
         
+        if (!cyclesData || cyclesData.length === 0) {
+          setCycles([]);
+          setLoading(false);
+          return;
+        }
+        
         // Enhance cycles with recipient names
         const enhancedCycles = await Promise.all(
-          (cyclesData || []).map(async (cycle) => {
+          cyclesData.map(async (cycle) => {
             let recipientName = 'Unassigned';
             
             if (cycle.recipient_id) {
@@ -85,9 +92,11 @@ const Payments: React.FC = () => {
             }
             
             return {
-              ...cycle,
+              id: cycle.id,
+              cycle_number: cycle.cycle_number,
+              tontine_id: cycle.tontine_id,
               recipient_name: recipientName
-            };
+            } as Cycle;
           })
         );
         
@@ -118,7 +127,8 @@ const Payments: React.FC = () => {
         { 
           event: '*', 
           schema: 'public', 
-          table: 'tontines' 
+          table: 'tontines',
+          filter: `created_by=eq.${user?.id}`
         },
         () => fetchTontinesAndCycles()
       )
@@ -130,7 +140,7 @@ const Payments: React.FC = () => {
         { 
           event: '*', 
           schema: 'public', 
-          table: 'cycles' 
+          table: 'cycles'
         },
         () => fetchTontinesAndCycles()
       )
@@ -140,7 +150,7 @@ const Payments: React.FC = () => {
       supabase.removeChannel(tontinesChannel);
       supabase.removeChannel(cyclesChannel);
     };
-  }, [user]);
+  }, [user, selectedCycleId]);
   
   // Find the selected cycle
   const selectedCycle = cycles.find(cycle => cycle.id === selectedCycleId);
