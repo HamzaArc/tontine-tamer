@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 interface DashboardCardProps {
   title: string;
   subtitle?: string;
+  description?: string; // Added the missing description prop
   icon?: React.ReactNode;
   value?: string | number;
   trend?: {
@@ -19,6 +20,7 @@ interface DashboardCardProps {
 const DashboardCard: React.FC<DashboardCardProps> = ({
   title,
   subtitle,
+  description,
   icon,
   value,
   trend,
@@ -37,6 +39,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
         )}
         {subtitle && (
           <p className="text-xs text-muted-foreground">{subtitle}</p>
+        )}
+        {description && (
+          <p className="text-xs text-muted-foreground">{description}</p>
         )}
         {trend && (
           <div className={cn(
