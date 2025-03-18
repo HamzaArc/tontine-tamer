@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -67,7 +68,7 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      amount: member?.amount || 250,
+      amount: 250, // Using a default amount instead of trying to access member.amount
       date: new Date(),
       notes: '',
     },
