@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -29,9 +29,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import { supabase } from '@/integrations/supabase/client';
 
 const formSchema = z.object({
   amount: z.coerce.number().positive({ message: 'Amount must be positive.' }),
@@ -50,12 +51,19 @@ interface Member {
   phone: string;
 }
 
+interface Cycle {
+  id: string;
+  amount: number;
+  tontine_id: string;
+}
+
 interface RecordPaymentDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   memberId: string;
   member: Member | null;
   onRecordPayment: (memberId: string, amount: number) => void;
+  cycleId?: string;
 }
 
 export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
@@ -64,20 +72,75 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
   memberId,
   member,
   onRecordPayment,
+  cycleId,
 }) => {
+  const [loading, setLoading] = useState(false);
+  const [suggestedAmount, setSuggestedAmount] = useState<number>(250);
+  
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      amount: 250, // Using a default amount instead of trying to access member.amount
+      amount: suggestedAmount,
       date: new Date(),
       notes: '',
     },
   });
+
+  useEffect(() => {
+    const calculateSuggestedAmount = async () => {
+      if (!cycleId) return;
+      
+      setLoading(true);
+      try {
+        // Fetch the cycle to get its tontine_id
+        const { data: cycleData, error: cycleError } = await supabase
+          .from('cycles')
+          .select('tontine_id')
+          .eq('id', cycleId)
+          .single();
+          
+        if (cycleError) throw cycleError;
+        
+        // Get the tontine total amount
+        const { data: tontineData, error: tontineError } = await supabase
+          .from('tontines')
+          .select('amount')
+          .eq('id', cycleData.tontine_id)
+          .single();
+        
+        if (tontineError) throw tontineError;
+        
+        // Get the number of active members
+        const { count: membersCount, error: membersError } = await supabase
+          .from('members')
+          .select('*', { count: 'exact', head: true })
+          .eq('tontine_id', cycleData.tontine_id)
+          .eq('is_active', true);
+        
+        if (membersError) throw membersError;
+        
+        if (membersCount && membersCount > 0) {
+          // Calculate the per-member contribution amount
+          const amount = Math.round(tontineData.amount / membersCount);
+          setSuggestedAmount(amount);
+          form.setValue('amount', amount);
+        }
+      } catch (error) {
+        console.error('Error calculating suggested amount:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (isOpen && cycleId) {
+      calculateSuggestedAmount();
+    }
+  }, [isOpen, cycleId, form]);
   
   const onSubmit = (data: FormValues) => {
     onRecordPayment(memberId, data.amount);
     onOpenChange(false);
-    form.reset();
+    form.reset({ amount: suggestedAmount, date: new Date(), notes: '' });
   };
   
   if (!member) return null;
@@ -107,7 +170,11 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
                         type="number" 
                         className="pl-8"
                         {...field} 
+                        disabled={loading}
                       />
+                      {loading && (
+                        <Loader2 className="h-4 w-4 animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
+                      )}
                     </div>
                   </FormControl>
                   <FormDescription>

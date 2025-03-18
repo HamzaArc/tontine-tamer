@@ -1,149 +1,110 @@
 
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
-import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import "./App.css";
+import Dashboard from './pages/Dashboard';
+import Tontines from './pages/Tontines';
+import TontineEdit from './pages/TontineEdit';
+import Cycles from './pages/Cycles';
+import Payments from './pages/Payments';
+import Reports from './pages/Reports';
+import SignIn from './pages/SignIn';
+import SignUp from './pages/SignUp';
+import NotFound from './pages/NotFound';
+import Index from './pages/Index';
+import { AuthProvider } from './contexts/AuthContext';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import { NotificationProvider } from './contexts/NotificationContext';
 
-import Index from "./pages/Index";
-import SignIn from "./pages/SignIn";
-import SignUp from "./pages/SignUp";
-import Dashboard from "./pages/Dashboard";
-import Tontines from "./pages/Tontines";
-import TontineEdit from "./pages/TontineEdit";
-import Cycles from "./pages/Cycles";
-import Payments from "./pages/Payments";
-import Reports from "./pages/Reports";
-import NotFound from "./pages/NotFound";
-import SideNavigation from "./components/layout/SideNavigation";
-import TontineDetails from "./components/tontines/TontineDetails";
-
-const queryClient = new QueryClient();
-
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
+function App() {
+  return (
+    <AuthProvider>
+      <NotificationProvider>
+        <Router>
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/signin" element={<SignIn />} />
-            <Route path="/signup" element={<SignUp />} />
+            <Route path="/sign-in" element={<SignIn />} />
+            <Route path="/sign-up" element={<SignUp />} />
             
-            {/* Protected Routes */}
-            {/* App Layout with Sidebar */}
-            <Route 
-              path="/dashboard" 
+            <Route
+              path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
-                    <Dashboard />
-                  </div>
+                  <Dashboard />
                 </ProtectedRoute>
-              } 
+              }
             />
             
-            <Route 
-              path="/tontines" 
+            <Route
+              path="/tontines"
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
-                    <Tontines />
-                  </div>
+                  <Tontines />
                 </ProtectedRoute>
-              } 
+              }
             />
             
-            <Route 
-              path="/tontines/:id" 
+            <Route
+              path="/tontines/:id"
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
-                    <div className="flex-1">
-                      <TontineDetails />
-                    </div>
-                  </div>
+                  <TontineEdit mode="view" />
                 </ProtectedRoute>
-              } 
+              }
             />
             
-            <Route 
-              path="/tontines/:id/edit" 
+            <Route
+              path="/tontines/:id/edit"
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
-                    <TontineEdit />
-                  </div>
+                  <TontineEdit mode="edit" />
                 </ProtectedRoute>
-              } 
+              }
             />
             
-            <Route 
-              path="/cycles" 
+            <Route
+              path="/tontines/new"
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
-                    <Cycles />
-                  </div>
+                  <TontineEdit mode="create" />
                 </ProtectedRoute>
-              } 
+              }
             />
             
-            <Route 
-              path="/payments" 
+            <Route
+              path="/cycles"
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
-                    <Payments />
-                  </div>
+                  <Cycles />
                 </ProtectedRoute>
-              } 
+              }
             />
             
-            <Route 
-              path="/reports" 
+            <Route
+              path="/payments"
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
-                    <Reports />
-                  </div>
+                  <Payments />
                 </ProtectedRoute>
-              } 
+              }
             />
             
-            <Route 
-              path="/settings" 
+            <Route
+              path="/reports"
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
-                    <div className="flex-1 p-8">
-                      <h1 className="text-2xl font-bold mb-4">Settings</h1>
-                      <p>Settings page coming soon.</p>
-                    </div>
-                  </div>
+                  <Reports />
                 </ProtectedRoute>
-              } 
+              }
             />
             
-            {/* Catch-all route */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+        </Router>
+        <Toaster />
+      </NotificationProvider>
+    </AuthProvider>
+  );
+}
 
 export default App;
