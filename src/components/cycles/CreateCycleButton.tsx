@@ -38,21 +38,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { supabase } from '@/integrations/supabase/client';
 
-// Mock data for tontine members
-const MOCK_MEMBERS = [
-  { id: '1', name: 'John Doe' },
-  { id: '2', name: 'Jane Smith' },
-  { id: '3', name: 'Alex Johnson' },
-  { id: '4', name: 'Sarah Williams' },
-  { id: '5', name: 'Michael Brown' },
-  { id: '6', name: 'Emily Davis' },
-  { id: '7', name: 'David Wilson' },
-  { id: '8', name: 'Lisa Miller' },
-];
+interface Member {
+  id: string;
+  name: string;
+}
 
 const formSchema = z.object({
   cycleNumber: z.coerce.number().int().positive({ message: 'Cycle number must be positive.' }),
@@ -74,13 +68,39 @@ interface CreateCycleButtonProps {
 const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
-  const [members, setMembers] = useState(MOCK_MEMBERS);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(false);
   
   useEffect(() => {
-    // In a real app, fetch members based on tontineId
-    console.log('Fetching members for tontine:', tontineId);
-    // setMembers(fetchedMembers)
-  }, [tontineId]);
+    const fetchMembers = async () => {
+      if (!tontineId) return;
+      
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('members')
+          .select('id, name')
+          .eq('tontine_id', tontineId)
+          .eq('is_active', true)
+          .order('name');
+          
+        if (error) throw error;
+        
+        setMembers(data || []);
+      } catch (error: any) {
+        console.error('Error fetching members:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load members. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchMembers();
+  }, [tontineId, toast]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -92,19 +112,41 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
     },
   });
 
-  const onSubmit = (data: FormValues) => {
-    // In a real app, this would send data to the backend
-    console.log('Form submitted:', data, 'for tontine:', tontineId);
-    
-    const recipientName = members.find(m => m.id === data.recipientId)?.name || 'Unknown';
-    
-    toast({
-      title: 'Cycle created',
-      description: `Cycle #${data.cycleNumber} has been created for ${recipientName}.`,
-    });
-    
-    setIsOpen(false);
-    form.reset();
+  const onSubmit = async (data: FormValues) => {
+    try {
+      // Create the new cycle in the database
+      const { data: cycleData, error: cycleError } = await supabase
+        .from('cycles')
+        .insert({
+          cycle_number: data.cycleNumber,
+          tontine_id: tontineId,
+          recipient_id: data.recipientId,
+          start_date: format(data.date, 'yyyy-MM-dd'),
+          end_date: format(data.date, 'yyyy-MM-dd'), // For simplicity, using same date 
+          status: 'upcoming'
+        })
+        .select()
+        .single();
+        
+      if (cycleError) throw cycleError;
+      
+      const recipientName = members.find(m => m.id === data.recipientId)?.name || 'Unknown';
+      
+      toast({
+        title: 'Cycle created',
+        description: `Cycle #${data.cycleNumber} has been created for ${recipientName}.`,
+      });
+      
+      setIsOpen(false);
+      form.reset();
+    } catch (error: any) {
+      console.error('Error creating cycle:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create cycle. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -219,14 +261,25 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {members.map((member) => (
-                        <SelectItem key={member.id} value={member.id}>
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4" />
-                            {member.name}
-                          </div>
-                        </SelectItem>
-                      ))}
+                      {loading ? (
+                        <div className="flex items-center justify-center p-2">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Loading members...
+                        </div>
+                      ) : members.length > 0 ? (
+                        members.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4" />
+                              {member.name}
+                            </div>
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="p-2 text-sm text-muted-foreground">
+                          No members found for this tontine
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                   <FormDescription>
