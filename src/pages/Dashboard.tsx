@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import PageContainer from '@/components/layout/PageContainer';
 import DashboardCard from '@/components/dashboard/DashboardCard';
@@ -45,22 +46,19 @@ const Dashboard: React.FC = () => {
           title="Total Active Tontines" 
           value="3"
           description="Across all your groups"
-          trend="up"
-          trendValue="1"
+          trend={{ value: 1, positive: true }}
         />
         <DashboardCard 
           title="Upcoming Payments" 
           value="8"
           description="Due in the next 7 days"
-          trend="neutral"
-          trendValue="0"
+          trend={{ value: 0, positive: true }}
         />
         <DashboardCard 
           title="Total Members" 
           value="24"
           description="Across all your tontines"
-          trend="up"
-          trendValue="3"
+          trend={{ value: 3, positive: true }}
         />
       </div>
       

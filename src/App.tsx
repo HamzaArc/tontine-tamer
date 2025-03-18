@@ -48,7 +48,7 @@ function App() {
               path="/tontines/:id"
               element={
                 <ProtectedRoute>
-                  <TontineEdit mode="view" />
+                  <TontineEdit />
                 </ProtectedRoute>
               }
             />
@@ -57,7 +57,7 @@ function App() {
               path="/tontines/:id/edit"
               element={
                 <ProtectedRoute>
-                  <TontineEdit mode="edit" />
+                  <TontineEdit />
                 </ProtectedRoute>
               }
             />
@@ -66,7 +66,7 @@ function App() {
               path="/tontines/new"
               element={
                 <ProtectedRoute>
-                  <TontineEdit mode="create" />
+                  <TontineEdit />
                 </ProtectedRoute>
               }
             />
