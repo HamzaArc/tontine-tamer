@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -96,7 +95,12 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
       // Create a map of existing payments by member_id
       const paymentsByMemberId: Record<string, Payment> = {};
       paymentsData?.forEach(payment => {
-        paymentsByMemberId[payment.member_id] = payment;
+        // Ensure payment status is either 'paid' or 'pending'
+        const status = payment.status === 'paid' ? 'paid' : 'pending';
+        paymentsByMemberId[payment.member_id] = {
+          ...payment,
+          status
+        };
       });
       
       // Calculate default amount - Get cycle amount and divide by number of members

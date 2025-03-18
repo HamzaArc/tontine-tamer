@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -48,9 +47,6 @@ interface Member {
   name: string;
   email: string;
   phone: string;
-  status: 'paid' | 'pending';
-  amount: number;
-  paymentDate?: string;
 }
 
 interface RecordPaymentDialogProps {

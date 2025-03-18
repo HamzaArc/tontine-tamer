@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
@@ -19,7 +18,8 @@ import {
   Edit,
   Loader2,
   RefreshCw,
-  Plus
+  Plus,
+  User
 } from 'lucide-react';
 import { 
   Tabs, 
@@ -81,7 +81,6 @@ const TontineDetails: React.FC = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   
-  // Function to fetch all data
   const fetchData = async () => {
     if (!id) return;
     
@@ -99,7 +98,6 @@ const TontineDetails: React.FC = () => {
     
     setLoading(true);
     try {
-      // Fetch tontine details
       const { data: tontineData, error: tontineError } = await supabase
         .from('tontines')
         .select('*')
@@ -117,7 +115,6 @@ const TontineDetails: React.FC = () => {
         return;
       }
       
-      // Count members
       const { count: membersCount, error: countError } = await supabase
         .from('members')
         .select('*', { count: 'exact', head: true })
@@ -126,19 +123,13 @@ const TontineDetails: React.FC = () => {
         
       if (countError) throw countError;
       
-      // Calculate tontine status
-      const now = new Date();
-      const startDate = new Date(tontineData.start_date);
-      const endDate = tontineData.end_date ? new Date(tontineData.end_date) : null;
-      
       let status = 'active';
-      if (startDate > now) {
+      if (new Date(tontineData.start_date) > new Date()) {
         status = 'upcoming';
-      } else if (endDate && endDate < now) {
+      } else if (tontineData.end_date && new Date(tontineData.end_date) < new Date()) {
         status = 'completed';
       }
       
-      // Get total collected amount from payments
       let totalCollected = 0;
       
       const { data: cyclesData, error: cyclesError } = await supabase
@@ -160,9 +151,8 @@ const TontineDetails: React.FC = () => {
         }
       }
       
-      // Calculate next payment date
-      let nextPaymentDate = new Date(startDate);
-      while (nextPaymentDate <= now) {
+      const nextPaymentDate = new Date(tontineData.start_date);
+      while (nextPaymentDate <= new Date()) {
         switch (tontineData.frequency) {
           case 'Weekly':
             nextPaymentDate.setDate(nextPaymentDate.getDate() + 7);
@@ -227,7 +217,6 @@ const TontineDetails: React.FC = () => {
     
     setCyclesLoading(true);
     try {
-      // Fetch cycles
       const { data: cyclesData, error: cyclesError } = await supabase
         .from('cycles')
         .select('*')
@@ -236,7 +225,6 @@ const TontineDetails: React.FC = () => {
         
       if (cyclesError) throw cyclesError;
       
-      // Get recipient names
       const enhancedCycles = await Promise.all(
         (cyclesData || []).map(async cycle => {
           let recipientName = 'Unassigned';
@@ -253,7 +241,6 @@ const TontineDetails: React.FC = () => {
             }
           }
           
-          // Determine status
           let status: 'upcoming' | 'active' | 'completed' = cycle.status as 'upcoming' | 'active' | 'completed';
           
           return {
@@ -279,7 +266,6 @@ const TontineDetails: React.FC = () => {
   useEffect(() => {
     fetchData();
     
-    // Set up realtime subscriptions
     const tontineChannel = supabase
       .channel('tontine-details-changes')
       .on('postgres_changes', 
@@ -304,7 +290,7 @@ const TontineDetails: React.FC = () => {
         }, 
         () => {
           fetchMembers();
-          fetchTontineDetails(); // To update member count
+          fetchTontineDetails();
         }
       )
       .subscribe();
@@ -331,7 +317,7 @@ const TontineDetails: React.FC = () => {
   
   const handleMemberAdded = () => {
     fetchMembers();
-    fetchTontineDetails(); // To update member count
+    fetchTontineDetails();
   };
   
   const handleRefresh = () => {
@@ -597,8 +583,8 @@ const TontineDetails: React.FC = () => {
                             <td className="px-4 py-3">
                               <Badge 
                                 variant={
-                                  cycle.status === 'completed' ? 'default' : 
-                                  cycle.status === 'active' ? 'success' : 'secondary'
+                                  cycle.status === 'completed' ? 'success' : 
+                                  cycle.status === 'active' ? 'default' : 'secondary'
                                 }
                               >
                                 {cycle.status}
