@@ -141,7 +141,7 @@ const Payments: React.FC = () => {
   useEffect(() => {
     fetchTontinesAndCycles();
     
-    // Set up realtime subscription for tontines and cycles
+    // Set up improved realtime subscription for tontines and cycles
     const tontinesChannel = supabase
       .channel('tontines-changes-payments')
       .on('postgres_changes', 
@@ -166,10 +166,27 @@ const Payments: React.FC = () => {
         () => fetchTontinesAndCycles()
       )
       .subscribe();
+      
+    // Listen for payment changes
+    const paymentsChannel = supabase
+      .channel('payments-changes')
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payments'
+        },
+        () => {
+          // Only refresh the payment list, not the entire page
+          // This will be handled by the PaymentsList component
+        }
+      )
+      .subscribe();
     
     return () => {
       supabase.removeChannel(tontinesChannel);
       supabase.removeChannel(cyclesChannel);
+      supabase.removeChannel(paymentsChannel);
     };
   }, [user]);
   

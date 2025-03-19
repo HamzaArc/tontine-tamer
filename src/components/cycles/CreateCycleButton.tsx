@@ -141,7 +141,7 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
     };
     
     fetchMembersAndDefaults();
-  }, [tontineId, toast]);
+  }, [tontineId, toast, isOpen]); // Add isOpen dependency to refresh when dialog opens
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -192,6 +192,9 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
         title: 'Cycle created',
         description: `Cycle #${nextCycleNumber} has been created for ${recipientName}.`,
       });
+      
+      // Increment the next cycle number locally
+      setNextCycleNumber(prev => prev + 1);
       
       setIsOpen(false);
       form.reset();

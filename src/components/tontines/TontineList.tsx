@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -112,14 +111,14 @@ const TontineList: React.FC = () => {
     if (user) {
       fetchTontines();
       
-      // Set up realtime subscription
+      // Set up realtime subscription with improved channel config
       const channel = supabase
-        .channel('tontines-changes')
+        .channel('tontines-list-changes')
         .on('postgres_changes', 
           { 
             event: '*', 
             schema: 'public', 
-            table: 'tontines' 
+            table: 'tontines'
           }, 
           () => {
             // Refresh when changes are detected

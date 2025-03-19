@@ -1,17 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
-import PageContainer from '@/components/layout/PageContainer';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { format } from 'date-fns';
-import { CalendarIcon, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-
 import {
   Form,
   FormField,
@@ -21,8 +14,24 @@ import {
   FormDescription,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { CalendarIcon } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
 import {
   Select,
   SelectContent,
@@ -30,15 +39,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import PageContainer from '@/components/layout/PageContainer';
 
-// Define the valid frequency values
 type FrequencyType = 'Weekly' | 'Bi-weekly' | 'Monthly' | 'Quarterly';
 
 const formSchema = z.object({
@@ -60,6 +64,7 @@ const TontineEdit: React.FC = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [tontineId, setTontineId] = useState(id);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -87,7 +92,6 @@ const TontineEdit: React.FC = () => {
         if (error) throw error;
 
         if (data) {
-          // Convert the database frequency to our enum type
           const frequency = data.frequency as FrequencyType;
           
           form.reset({
@@ -119,11 +123,9 @@ const TontineEdit: React.FC = () => {
     setSubmitting(true);
     
     try {
-      // Calculate an estimated end date based on frequency
       const startDate = new Date(data.startDate);
       let endDate = new Date(startDate);
       
-      // Simple estimation for end date
       switch (data.frequency) {
         case 'Weekly':
           endDate.setMonth(endDate.getMonth() + 3);
@@ -174,7 +176,7 @@ const TontineEdit: React.FC = () => {
 
   if (loading) {
     return (
-      <PageContainer title="Edit Tontine">
+      <PageContainer title={loading ? 'Loading...' : `Edit ${tontine?.name || 'Tontine'}`}>
         <div className="flex justify-center items-center h-96">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -183,10 +185,22 @@ const TontineEdit: React.FC = () => {
   }
 
   return (
-    <PageContainer title="Edit Tontine">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Edit Tontine</h1>
-
+    <PageContainer title={loading ? 'Loading...' : `Edit ${tontine?.name || 'Tontine'}`}>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => navigate(`/tontines/${tontineId}`)}
+            className="mb-2 md:mb-0"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Tontine
+          </Button>
+          
+          <h1 className="text-2xl font-bold">{loading ? 'Loading...' : `Edit ${tontine?.name || 'Tontine'}`}</h1>
+        </div>
+        
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
@@ -328,7 +342,7 @@ const TontineEdit: React.FC = () => {
               <Button 
                 type="button" 
                 variant="outline" 
-                onClick={() => navigate(`/tontines/${id}`)} 
+                onClick={() => navigate(`/tontines/${tontineId}`)} 
                 disabled={submitting}
               >
                 Cancel

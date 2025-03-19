@@ -126,6 +126,7 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
       date: new Date(),
       notes: '',
     },
+    // Initialize with current values, will be updated when defaultAmount changes
     values: {
       amount: defaultAmount,
       date: new Date(),
