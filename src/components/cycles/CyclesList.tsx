@@ -19,7 +19,7 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { format, isBefore, isEqual, startOfToday } from 'date-fns';
+import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,13 +28,12 @@ interface Cycle {
   cycle_number: number;
   start_date: string;
   end_date: string;
-  status: 'upcoming' | 'active' | 'ongoing' | 'completed';
+  status: 'upcoming' | 'active' | 'completed';
   recipient_id: string | null;
   recipient_name?: string;
   tontine_id: string;
   amount?: number;
   contributions_count?: number;
-  members_count?: number;
 }
 
 interface CyclesListProps {
@@ -62,15 +61,6 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
       
       if (tontineError) throw tontineError;
       
-      // Get number of members in the tontine
-      const { count: membersCount, error: membersError } = await supabase
-        .from('members')
-        .select('*', { count: 'exact', head: true })
-        .eq('tontine_id', tontineId)
-        .eq('is_active', true);
-        
-      if (membersError) throw membersError;
-      
       // Fetch cycles for this tontine
       const { data: cyclesData, error: cyclesError } = await supabase
         .from('cycles')
@@ -79,8 +69,6 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
         .order('cycle_number', { ascending: true });
       
       if (cyclesError) throw cyclesError;
-      
-      const today = startOfToday();
       
       // For cycles with recipients, get recipient names
       const enhancedCycles = await Promise.all(
@@ -99,42 +87,27 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             }
           }
           
-          // Count contributions for each cycle
-          const { count: contributionsCount, error: paymentsError } = await supabase
-            .from('payments')
-            .select('*', { count: 'exact', head: true })
-            .eq('cycle_id', cycle.id)
-            .eq('status', 'paid');
-          
-          if (paymentsError) throw paymentsError;
-          
-          // Calculate the cycle status based on the new rules
-          let status: 'upcoming' | 'active' | 'ongoing' | 'completed' = 'upcoming';
-          
-          const cycleStartDate = new Date(cycle.start_date);
-          
-          if (isBefore(cycleStartDate, today) || isEqual(cycleStartDate, today)) {
-            status = 'active';
+          // Count contributions for active cycles
+          let contributionsCount = 0;
+          if (cycle.status !== 'upcoming') {
+            const { count, error: paymentsError } = await supabase
+              .from('payments')
+              .select('*', { count: 'exact', head: true })
+              .eq('cycle_id', cycle.id)
+              .eq('status', 'paid');
             
-            if (contributionsCount && contributionsCount > 0) {
-              status = 'ongoing';
-              
-              // If all members have paid, mark as completed
-              if (contributionsCount >= (membersCount || 0)) {
-                status = 'completed';
-              }
+            if (!paymentsError) {
+              contributionsCount = count || 0;
             }
-          } else {
-            status = 'upcoming';
           }
           
           return {
             ...cycle,
             recipient_name: recipientName,
             amount: tontineData.amount,
-            contributions_count: contributionsCount || 0,
-            members_count: membersCount || 0,
-            status: status
+            contributions_count: contributionsCount,
+            // Ensure status is properly typed
+            status: cycle.status as 'upcoming' | 'active' | 'completed'
           };
         })
       );
@@ -173,24 +146,8 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
         )
         .subscribe();
       
-      // Also listen for payment changes, as they affect cycle status
-      const paymentsChannel = supabase
-        .channel('payments-changes-for-cycles')
-        .on('postgres_changes', 
-          { 
-            event: '*', 
-            schema: 'public', 
-            table: 'payments'
-          }, 
-          () => {
-            fetchCycles();
-          }
-        )
-        .subscribe();
-      
       return () => {
         supabase.removeChannel(channel);
-        supabase.removeChannel(paymentsChannel);
       };
     }
   }, [tontineId]);
@@ -206,9 +163,8 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
   const getStatusColor = (status: string) => {
     switch(status) {
       case 'completed': return 'default';
-      case 'active': return 'secondary';
-      case 'ongoing': return 'success';
-      case 'upcoming': return 'outline';
+      case 'active': return 'success';
+      case 'upcoming': return 'secondary';
       default: return 'default';
     }
   };
@@ -297,7 +253,7 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       {cycle.status !== 'upcoming' ? (
-                        <span>{cycle.contributions_count} / {cycle.members_count}</span>
+                        <span>{cycle.contributions_count} / 8</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

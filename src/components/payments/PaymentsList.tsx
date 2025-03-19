@@ -47,10 +47,9 @@ interface Payment {
 
 interface PaymentsListProps {
   cycleId: string;
-  onRecordPayment?: (memberId: string, amount: number) => void;
 }
 
-const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment }) => {
+const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
@@ -67,6 +66,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
 
     setRefreshing(true);
     try {
+      // Fetch the cycle to get tontine_id
       const { data: cycleData, error: cycleError } = await supabase
         .from('cycles')
         .select('tontine_id')
@@ -75,6 +75,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
       
       if (cycleError) throw cycleError;
       
+      // Get all members of the tontine
       const { data: membersData, error: membersError } = await supabase
         .from('members')
         .select('id, name, email, phone')
@@ -83,6 +84,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
       
       if (membersError) throw membersError;
       
+      // Get existing payments for this cycle
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payments')
         .select('id, member_id, status, amount, payment_date')
@@ -90,8 +92,10 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
       
       if (paymentsError) throw paymentsError;
       
+      // Create a map of existing payments by member_id
       const paymentsByMemberId: Record<string, Payment> = {};
       paymentsData?.forEach(payment => {
+        // Ensure payment status is either 'paid' or 'pending'
         const status = payment.status === 'paid' ? 'paid' : 'pending';
         paymentsByMemberId[payment.member_id] = {
           ...payment,
@@ -99,6 +103,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
         };
       });
       
+      // Calculate default amount - Get cycle amount and divide by number of members
       const { data: cycleAmountData, error: amountError } = await supabase
         .from('cycles')
         .select('*, tontines(amount)')
@@ -110,6 +115,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
       const totalAmount = cycleAmountData.tontines.amount;
       const defaultAmount = membersData?.length > 0 ? totalAmount / membersData.length : 0;
       
+      // Create comprehensive payments list with member details
       const allPayments: Payment[] = membersData?.map(member => {
         const existingPayment = paymentsByMemberId[member.id];
         
@@ -119,11 +125,12 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
             member
           };
         } else {
+          // Create a payment record if none exists for this member
           return {
-            id: 'temp-' + member.id,
+            id: 'temp-' + member.id, // Will be replaced when payment is recorded
             member_id: member.id,
             status: 'pending',
-            amount: Math.round(defaultAmount * 100) / 100,
+            amount: Math.round(defaultAmount * 100) / 100, // Round to 2 decimal places
             member
           };
         }
@@ -146,6 +153,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
   useEffect(() => {
     fetchPayments();
     
+    // Set up realtime subscription for payments changes
     const paymentsChannel = supabase
       .channel('payments-list-changes')
       .on('postgres_changes', 
@@ -173,9 +181,11 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
   
   const handlePaymentRecorded = async (memberId: string, amount: number) => {
     try {
+      // Check if payment already exists
       const selectedPayment = payments.find(p => p.member_id === memberId);
       
       if (selectedPayment && !selectedPayment.id.startsWith('temp-')) {
+        // Update existing payment
         const { error } = await supabase
           .from('payments')
           .update({
@@ -187,6 +197,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
           
         if (error) throw error;
       } else {
+        // Create new payment
         const { error } = await supabase
           .from('payments')
           .insert({
@@ -206,10 +217,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
         description: `Payment of $${amount} has been recorded.`,
       });
       
-      if (onRecordPayment) {
-        onRecordPayment(memberId, amount);
-      }
-      
+      // Refresh payments list
       fetchPayments();
     } catch (error: any) {
       console.error('Error recording payment:', error);
@@ -262,6 +270,7 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId, onRecordPayment })
         description: `Payment from ${memberName} has been marked as pending.`,
       });
       
+      // Refresh payments list
       fetchPayments();
     } catch (error: any) {
       console.error('Error reversing payment:', error);
