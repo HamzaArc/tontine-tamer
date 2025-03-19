@@ -85,7 +85,7 @@ const Header: React.FC<HeaderProps> = ({ title }) => {
             </SheetTrigger>
             <SheetContent side="left" className="pr-0">
               <SideNavigation 
-                isMobile={true} 
+                mobile={true} 
                 onNavigate={() => setShowMobileMenu(false)} 
               />
             </SheetContent>

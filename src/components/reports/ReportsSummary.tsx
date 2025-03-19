@@ -17,8 +17,7 @@ interface PaymentData {
 
 interface MemberContribution {
   name: string;
-  amount: number;
-  count: number;
+  value: number;
 }
 
 interface TontinePerformance {
@@ -200,14 +199,13 @@ const ReportsSummary: React.FC = () => {
         }
       });
       
-      // Convert to array and sort
+      // Convert to array and sort for PieChart
       const formattedMemberData = Object.entries(memberData)
         .map(([name, data]) => ({
           name,
-          amount: data.amount,
-          count: data.count
+          value: data.amount
         }))
-        .sort((a, b) => b.amount - a.amount)
+        .sort((a, b) => b.value - a.value)
         .slice(0, 5); // Top 5 contributors
       
       // Process tontine performance
@@ -247,10 +245,7 @@ const ReportsSummary: React.FC = () => {
         .sort((a, b) => b.completion - a.completion);
       
       setPaymentData(formattedPaymentData);
-      setMemberContributions(formattedMemberData.map(item => ({
-        name: item.name,
-        value: item.amount
-      })));
+      setMemberContributions(formattedMemberData);
       setTontinePerformance(formattedTontineData || []);
       
     } catch (error: any) {
