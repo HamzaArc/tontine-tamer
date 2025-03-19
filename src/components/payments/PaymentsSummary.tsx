@@ -75,14 +75,17 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
         }
         
         // Count total members in tontine
-        const { count: totalMembers, error: membersError } = await supabase
+        const { data: membersData, error: membersError } = await supabase
           .from('members')
-          .select('*', { count: 'exact', head: true })
-          .eq('tontine_id', cycleData.tontine_id);
+          .select('id')
+          .eq('tontine_id', cycleData.tontine_id)
+          .eq('is_active', true);
           
         if (membersError) throw membersError;
         
-        // Count paid members for this cycle
+        const membersCount = membersData?.length || 0;
+        
+        // Count paid members for this cycle and sum their contributions
         const { data: payments, error: paymentsError } = await supabase
           .from('payments')
           .select('amount, status')
@@ -94,10 +97,8 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
         const paidMembersCount = paidMembers.length;
         const currentAmount = paidMembers.reduce((sum, payment) => sum + Number(payment.amount), 0);
         
-        // Calculate total expected amount
-        const membersCount = totalMembers || 0;
-        const amountPerMember = cycleData.tontines.amount || 0;
-        const totalAmount = membersCount * amountPerMember;
+        // Calculate total expected amount - this is the total amount to be paid to the recipient
+        const totalAmount = cycleData.tontines.amount;
         
         // Calculate completion percentage
         const completionPercentage = totalAmount > 0 
@@ -131,7 +132,7 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
     
     // Set up realtime subscriptions
     const paymentsChannel = supabase
-      .channel('payments-changes')
+      .channel('payments-changes-summary')
       .on('postgres_changes', 
         { 
           event: '*', 
