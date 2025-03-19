@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageContainer from '@/components/layout/PageContainer';
@@ -35,6 +34,7 @@ const Cycles: React.FC = () => {
       if (!user) return;
 
       try {
+        console.log('Fetching tontines for cycles page');
         const { data, error } = await supabase
           .from('tontines')
           .select('id, name')
@@ -43,6 +43,7 @@ const Cycles: React.FC = () => {
           
         if (error) throw error;
         
+        console.log('Tontines retrieved:', data?.length);
         setTontines(data || []);
         
         // If no tontine is selected but we have tontines, select the first one
@@ -63,9 +64,9 @@ const Cycles: React.FC = () => {
     
     fetchTontines();
     
-    // Set up realtime subscription
+    // Set up realtime subscription with improved channel naming
     const channel = supabase
-      .channel('tontines-changes-cycles')
+      .channel('tontines-changes-cycles-page')
       .on('postgres_changes', 
         { 
           event: '*', 
@@ -73,7 +74,8 @@ const Cycles: React.FC = () => {
           table: 'tontines',
           filter: `created_by=eq.${user?.id}`
         }, 
-        () => {
+        (payload) => {
+          console.log('Tontine change detected in cycles page:', payload);
           fetchTontines();
         }
       )
@@ -82,7 +84,7 @@ const Cycles: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, selectedTontineId]);
+  }, [user, toast]);
   
   if (loading) {
     return (

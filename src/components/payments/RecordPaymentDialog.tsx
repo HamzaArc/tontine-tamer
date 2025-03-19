@@ -71,11 +71,16 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
   useEffect(() => {
     const fetchTontineInfo = async () => {
       try {
+        console.log('Fetching tontine info for payment calculation');
+        
         // First, get cycle_id from the URL
         const urlParams = new URLSearchParams(window.location.search);
         const cycleId = urlParams.get('cycle');
         
-        if (!cycleId) return;
+        if (!cycleId) {
+          console.log('No cycle ID found in URL');
+          return;
+        }
         
         // Get the cycle to get tontine_id
         const { data: cycleData, error: cycleError } = await supabase
@@ -84,7 +89,12 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
           .eq('id', cycleId)
           .single();
         
-        if (cycleError) throw cycleError;
+        if (cycleError) {
+          console.error('Error fetching cycle data:', cycleError);
+          throw cycleError;
+        }
+        
+        console.log('Cycle data:', cycleData);
         
         // Get tontine amount and active members count
         const { data: tontineData, error: tontineError } = await supabase
@@ -93,7 +103,12 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
           .eq('id', cycleData.tontine_id)
           .single();
         
-        if (tontineError) throw tontineError;
+        if (tontineError) {
+          console.error('Error fetching tontine data:', tontineError);
+          throw tontineError;
+        }
+        
+        console.log('Tontine data:', tontineData);
         
         // Count active members
         const { count, error: membersError } = await supabase
@@ -102,12 +117,20 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
           .eq('tontine_id', cycleData.tontine_id)
           .eq('is_active', true);
         
-        if (membersError) throw membersError;
+        if (membersError) {
+          console.error('Error counting members:', membersError);
+          throw membersError;
+        }
+        
+        console.log('Active members count:', count);
         
         // Calculate amount per member
-        if (count && count > 0) {
+        if (count && count > 0 && tontineData.amount) {
           const amountPerMember = Math.round((tontineData.amount / count) * 100) / 100;
+          console.log('Calculated amount per member:', amountPerMember);
           setDefaultAmount(amountPerMember);
+        } else {
+          console.log('Cannot calculate amount: count or tontine amount is missing');
         }
       } catch (error) {
         console.error('Error fetching tontine info:', error);
@@ -122,13 +145,7 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      amount: defaultAmount,
-      date: new Date(),
-      notes: '',
-    },
-    // Initialize with current values, will be updated when defaultAmount changes
-    values: {
-      amount: defaultAmount,
+      amount: 0,
       date: new Date(),
       notes: '',
     }
@@ -136,10 +153,14 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
   
   // Update form values when defaultAmount changes
   useEffect(() => {
-    form.setValue('amount', defaultAmount);
-  }, [defaultAmount, form]);
+    console.log('Setting form amount to:', defaultAmount);
+    if (isOpen && defaultAmount > 0) {
+      form.setValue('amount', defaultAmount);
+    }
+  }, [defaultAmount, form, isOpen]);
   
   const onSubmit = (data: FormValues) => {
+    console.log('Submitting payment:', data);
     onRecordPayment(memberId, data.amount);
     onOpenChange(false);
     form.reset();

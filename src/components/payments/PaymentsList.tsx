@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -66,6 +67,8 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
 
     setRefreshing(true);
     try {
+      console.log('Fetching payments for cycle:', cycleId);
+      
       // Fetch the cycle to get tontine_id
       const { data: cycleData, error: cycleError } = await supabase
         .from('cycles')
@@ -73,7 +76,10 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
         .eq('id', cycleId)
         .single();
       
-      if (cycleError) throw cycleError;
+      if (cycleError) {
+        console.error('Error fetching cycle:', cycleError);
+        throw cycleError;
+      }
       
       // Get all members of the tontine
       const { data: membersData, error: membersError } = await supabase
@@ -82,7 +88,12 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
         .eq('tontine_id', cycleData.tontine_id)
         .eq('is_active', true);
       
-      if (membersError) throw membersError;
+      if (membersError) {
+        console.error('Error fetching members:', membersError);
+        throw membersError;
+      }
+      
+      console.log('Members found:', membersData?.length);
       
       // Get existing payments for this cycle
       const { data: paymentsData, error: paymentsError } = await supabase
@@ -90,7 +101,12 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
         .select('id, member_id, status, amount, payment_date')
         .eq('cycle_id', cycleId);
       
-      if (paymentsError) throw paymentsError;
+      if (paymentsError) {
+        console.error('Error fetching payments:', paymentsError);
+        throw paymentsError;
+      }
+      
+      console.log('Existing payments found:', paymentsData?.length);
       
       // Create a map of existing payments by member_id
       const paymentsByMemberId: Record<string, Payment> = {};
@@ -110,10 +126,15 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
         .eq('id', cycleId)
         .single();
         
-      if (amountError) throw amountError;
+      if (amountError) {
+        console.error('Error fetching tontine amount:', amountError);
+        throw amountError;
+      }
       
       const totalAmount = cycleAmountData.tontines.amount;
       const defaultAmount = membersData?.length > 0 ? totalAmount / membersData.length : 0;
+      
+      console.log('Total amount:', totalAmount, 'Default per member:', defaultAmount);
       
       // Create comprehensive payments list with member details
       const allPayments: Payment[] = membersData?.map(member => {
@@ -153,9 +174,9 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
   useEffect(() => {
     fetchPayments();
     
-    // Set up realtime subscription for payments changes
+    // Set up realtime subscription for payments changes with unique channel name
     const paymentsChannel = supabase
-      .channel('payments-list-changes')
+      .channel('payments-list-changes-' + cycleId)
       .on('postgres_changes', 
         { 
           event: '*', 
@@ -163,7 +184,8 @@ const PaymentsList: React.FC<PaymentsListProps> = ({ cycleId }) => {
           table: 'payments',
           filter: `cycle_id=eq.${cycleId}`
         }, 
-        () => {
+        (payload) => {
+          console.log('Payment change detected:', payload);
           fetchPayments();
         }
       )

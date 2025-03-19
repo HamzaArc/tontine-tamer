@@ -86,6 +86,8 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
     
     setRefreshing(true);
     try {
+      console.log('Fetching cycles for tontine:', tontineId);
+      
       // Fetch tontine to get amount
       const { data: tontineData, error: tontineError } = await supabase
         .from('tontines')
@@ -112,6 +114,8 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
         .order('cycle_number', { ascending: true });
       
       if (cyclesError) throw cyclesError;
+
+      console.log('Cycles data:', cyclesData);
       
       // For cycles with recipients, get recipient names
       const enhancedCycles = await Promise.all(
@@ -172,6 +176,7 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
         })
       );
       
+      console.log('Enhanced cycles:', enhancedCycles);
       setCycles(enhancedCycles);
     } catch (error: any) {
       console.error('Error fetching cycles:', error);
@@ -190,9 +195,9 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
     if (tontineId) {
       fetchCycles();
       
-      // Set up realtime subscription
-      const channel = supabase
-        .channel('cycles-changes')
+      // Set up realtime subscription for cycles
+      const cyclesChannel = supabase
+        .channel('cycles-changes-' + tontineId)
         .on('postgres_changes', 
           { 
             event: '*', 
@@ -200,7 +205,8 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             table: 'cycles',
             filter: `tontine_id=eq.${tontineId}`
           }, 
-          () => {
+          (payload) => {
+            console.log('Cycles change detected:', payload);
             fetchCycles();
           }
         )
@@ -208,21 +214,22 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
       
       // Also listen for payment changes which could affect cycle status
       const paymentsChannel = supabase
-        .channel('payments-changes-cycles')
+        .channel('payments-changes-cycles-' + tontineId)
         .on('postgres_changes',
           {
             event: '*',
             schema: 'public',
             table: 'payments'
           },
-          () => {
+          (payload) => {
+            console.log('Payment change detected that might affect cycle status:', payload);
             fetchCycles();
           }
         )
         .subscribe();
       
       return () => {
-        supabase.removeChannel(channel);
+        supabase.removeChannel(cyclesChannel);
         supabase.removeChannel(paymentsChannel);
       };
     }

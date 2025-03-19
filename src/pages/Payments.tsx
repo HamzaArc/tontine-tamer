@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageContainer from '@/components/layout/PageContainer';
@@ -46,6 +45,8 @@ const Payments: React.FC = () => {
 
     setRefreshing(true);
     try {
+      console.log('Fetching tontines and cycles for payments page');
+      
       // Fetch tontines
       const { data: tontinesData, error: tontinesError } = await supabase
         .from('tontines')
@@ -55,6 +56,7 @@ const Payments: React.FC = () => {
         
       if (tontinesError) throw tontinesError;
       
+      console.log('Tontines retrieved:', tontinesData?.length);
       setTontines(tontinesData || []);
       
       if (!tontinesData || tontinesData.length === 0) {
@@ -78,6 +80,8 @@ const Payments: React.FC = () => {
         .order('cycle_number', { ascending: true });
         
       if (cyclesError) throw cyclesError;
+      
+      console.log('Cycles retrieved:', cyclesData?.length);
       
       if (!cyclesData || cyclesData.length === 0) {
         setCycles([]);
@@ -113,6 +117,7 @@ const Payments: React.FC = () => {
         })
       );
       
+      console.log('Enhanced cycles:', enhancedCycles.length);
       setCycles(enhancedCycles);
       
       // If no cycle is selected but we have cycles, select the first one
@@ -120,8 +125,10 @@ const Payments: React.FC = () => {
         // Try to find an active cycle first
         const activeCycle = enhancedCycles.find(cycle => cycle.status === 'active');
         if (activeCycle) {
+          console.log('Setting active cycle:', activeCycle.id);
           setSelectedCycleId(activeCycle.id);
         } else {
+          console.log('Setting first cycle:', enhancedCycles[0].id);
           setSelectedCycleId(enhancedCycles[0].id);
         }
       }
@@ -141,9 +148,9 @@ const Payments: React.FC = () => {
   useEffect(() => {
     fetchTontinesAndCycles();
     
-    // Set up improved realtime subscription for tontines and cycles
+    // Set up improved realtime subscription for tontines with unique channel names
     const tontinesChannel = supabase
-      .channel('tontines-changes-payments')
+      .channel('tontines-changes-payments-page')
       .on('postgres_changes', 
         { 
           event: '*', 
@@ -151,34 +158,24 @@ const Payments: React.FC = () => {
           table: 'tontines',
           filter: `created_by=eq.${user?.id}`
         },
-        () => fetchTontinesAndCycles()
+        (payload) => {
+          console.log('Tontine change detected in payments page:', payload);
+          fetchTontinesAndCycles();
+        }
       )
       .subscribe();
       
     const cyclesChannel = supabase
-      .channel('cycles-changes-payments')
+      .channel('cycles-changes-payments-page')
       .on('postgres_changes', 
         { 
           event: '*', 
           schema: 'public', 
           table: 'cycles'
         },
-        () => fetchTontinesAndCycles()
-      )
-      .subscribe();
-      
-    // Listen for payment changes
-    const paymentsChannel = supabase
-      .channel('payments-changes')
-      .on('postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'payments'
-        },
-        () => {
-          // Only refresh the payment list, not the entire page
-          // This will be handled by the PaymentsList component
+        (payload) => {
+          console.log('Cycle change detected in payments page:', payload);
+          fetchTontinesAndCycles();
         }
       )
       .subscribe();
@@ -186,7 +183,6 @@ const Payments: React.FC = () => {
     return () => {
       supabase.removeChannel(tontinesChannel);
       supabase.removeChannel(cyclesChannel);
-      supabase.removeChannel(paymentsChannel);
     };
   }, [user]);
   

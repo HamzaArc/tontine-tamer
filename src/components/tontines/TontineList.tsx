@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,6 +61,7 @@ const TontineList: React.FC = () => {
       const { data: tontinesData, error: tontinesError } = await supabase
         .from('tontines')
         .select('*')
+        .eq('created_by', user.id) // Ensure we filter by user
         .order('created_at', { ascending: false });
         
       if (tontinesError) throw tontinesError;
@@ -96,6 +98,7 @@ const TontineList: React.FC = () => {
       
       setTontines(tontinesWithMembers);
     } catch (error: any) {
+      console.error('Error fetching tontines:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to fetch tontines',
@@ -118,7 +121,8 @@ const TontineList: React.FC = () => {
           { 
             event: '*', 
             schema: 'public', 
-            table: 'tontines'
+            table: 'tontines',
+            filter: `created_by=eq.${user.id}`
           }, 
           () => {
             // Refresh when changes are detected
