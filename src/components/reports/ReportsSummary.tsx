@@ -62,7 +62,7 @@ const ReportsSummary: React.FC = () => {
         // Get active tontines (those with active cycles)
         const { data: activeCycles, error: cyclesError } = await supabase
           .from('cycles')
-          .select('tontine_id')
+          .select('id, tontine_id')
           .in('tontine_id', tontineIds)
           .eq('status', 'active');
           
@@ -90,7 +90,7 @@ const ReportsSummary: React.FC = () => {
           
         if (paymentsError) throw paymentsError;
         
-        const totalContributed = payments?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
+        const totalContributed = payments?.reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0) || 0;
         
         // Calculate contribution growth (comparing current month to previous month)
         const now = new Date();
@@ -107,8 +107,8 @@ const ReportsSummary: React.FC = () => {
           return paymentDate >= previousMonthStart && paymentDate < currentMonthStart;
         });
         
-        const currentMonthTotal = currentMonthPayments?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
-        const previousMonthTotal = previousMonthPayments?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
+        const currentMonthTotal = currentMonthPayments?.reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0) || 0;
+        const previousMonthTotal = previousMonthPayments?.reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0) || 0;
         
         let contributionGrowth = 0;
         if (previousMonthTotal > 0) {
@@ -120,16 +120,9 @@ const ReportsSummary: React.FC = () => {
         let pendingPayments = 0;
         let overduePayments = 0;
         
-        if (activeCycleIds.length > 0) {
-          const { data: cycles, error: detailedCyclesError } = await supabase
-            .from('cycles')
-            .select('id, end_date')
-            .in('id', activeCycleIds);
-            
-          if (detailedCyclesError) throw detailedCyclesError;
-          
+        if (activeCycleIds.length > 0 && activeCycles) {
           await Promise.all(
-            cycles?.map(async (cycle) => {
+            activeCycles.map(async (cycle) => {
               // Get members who should pay in this cycle
               const { data: cycleMembers, error: cycleMembersError } = await supabase
                 .from('members')
@@ -153,8 +146,17 @@ const ReportsSummary: React.FC = () => {
               const paidMemberIds = paidMembers?.map(p => p.member_id) || [];
               const unpaidMembers = cycleMembers.filter(m => !paidMemberIds.includes(m.id));
               
+              // Get cycle end date to check if overdue
+              const { data: cycleData, error: cycleError } = await supabase
+                .from('cycles')
+                .select('end_date')
+                .eq('id', cycle.id)
+                .single();
+                
+              if (cycleError) throw cycleError;
+              
               // Check if cycle end date is past
-              const cycleEndDate = new Date(cycle.end_date);
+              const cycleEndDate = new Date(cycleData.end_date);
               const isOverdue = cycleEndDate < now;
               
               if (isOverdue) {
@@ -162,7 +164,7 @@ const ReportsSummary: React.FC = () => {
               } else {
                 pendingPayments += unpaidMembers.length;
               }
-            }) || []
+            })
           );
         }
         

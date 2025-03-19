@@ -109,7 +109,7 @@ const UpcomingPayments = () => {
               upcomingPayments.push({
                 id: `${cycle.id}-${member.id}`,
                 tontineName: tontineNamesMap[cycle.tontine_id],
-                amount: parseFloat(tontineData.amount),
+                amount: parseFloat(tontineData.amount.toString()),
                 dueDate: cycle.end_date,
                 status
               });

@@ -27,6 +27,13 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
+interface ProfileData {
+  avatar_url: string | null;
+  full_name: string | null;
+  email: string;
+  phone?: string | null;
+}
+
 const Profile = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -57,13 +64,16 @@ const Profile = () => {
           
         if (error) throw error;
         
+        // Cast data to the correct type
+        const profileData = data as unknown as ProfileData;
+        
         form.reset({
-          fullName: data.full_name || '',
-          email: data.email || user.email || '',
-          phone: data.phone || '',
+          fullName: profileData.full_name || '',
+          email: profileData.email || user.email || '',
+          phone: profileData.phone || '',
         });
         
-        setAvatar(data.avatar_url);
+        setAvatar(profileData.avatar_url);
       } catch (error) {
         console.error('Error fetching user profile:', error);
         toast({

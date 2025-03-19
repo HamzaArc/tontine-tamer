@@ -94,8 +94,8 @@ const ActiveTontines = () => {
                   
                 if (paymentsError) throw paymentsError;
                 
-                const amountCollected = paymentsData?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
-                const totalAmount = (membersCount || 0) * parseFloat(tontine.amount);
+                const amountCollected = paymentsData?.reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0) || 0;
+                const totalAmount = (membersCount || 0) * parseFloat(tontine.amount.toString());
                 
                 return {
                   id: tontine.id,
@@ -116,7 +116,7 @@ const ActiveTontines = () => {
               cycleProgress: cycleProgress,
               nextPayout: nextPayout,
               amountCollected: 0,
-              totalAmount: (membersCount || 0) * parseFloat(tontine.amount)
+              totalAmount: (membersCount || 0) * parseFloat(tontine.amount.toString())
             };
           })
         );

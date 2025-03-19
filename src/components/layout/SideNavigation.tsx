@@ -8,12 +8,19 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const SideNavigation: React.FC = () => {
   const { signOut } = useAuth();
   const location = useLocation();
-  const { isMobile, isSidebarOpen, toggleSidebar } = useMobile();
+  const isMobile = useIsMobile();
+  const [isSidebarOpen, setIsSidebarOpen] = React.useState(!isMobile);
+  
+  React.useEffect(() => {
+    setIsSidebarOpen(!isMobile);
+  }, [isMobile]);
+  
+  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   
   const isActivePath = (path: string) => {
     if (path === '/') return location.pathname === path;

@@ -77,7 +77,7 @@ const DashboardSummary = () => {
           
         if (paymentsError) throw paymentsError;
         
-        const totalContributions = paymentsThisMonth?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
+        const totalContributions = paymentsThisMonth?.reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0) || 0;
         
         // Get total balance (all payments)
         const { data: allPayments, error: allPaymentsError } = await supabase
@@ -86,7 +86,7 @@ const DashboardSummary = () => {
           
         if (allPaymentsError) throw allPaymentsError;
         
-        const totalBalance = allPayments?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
+        const totalBalance = allPayments?.reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0) || 0;
         
         // Get upcoming payouts (cycles ending in next 30 days)
         const thirtyDaysFromNow = new Date();
