@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -32,6 +32,7 @@ import {
 import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import { supabase } from '@/integrations/supabase/client';
 
 const formSchema = z.object({
   amount: z.coerce.number().positive({ message: 'Amount must be positive.' }),
@@ -65,14 +66,77 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
   member,
   onRecordPayment,
 }) => {
+  const [defaultAmount, setDefaultAmount] = useState<number>(0);
+  
+  useEffect(() => {
+    const fetchTontineInfo = async () => {
+      try {
+        // First, get cycle_id from the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const cycleId = urlParams.get('cycle');
+        
+        if (!cycleId) return;
+        
+        // Get the cycle to get tontine_id
+        const { data: cycleData, error: cycleError } = await supabase
+          .from('cycles')
+          .select('tontine_id')
+          .eq('id', cycleId)
+          .single();
+        
+        if (cycleError) throw cycleError;
+        
+        // Get tontine amount and active members count
+        const { data: tontineData, error: tontineError } = await supabase
+          .from('tontines')
+          .select('amount')
+          .eq('id', cycleData.tontine_id)
+          .single();
+        
+        if (tontineError) throw tontineError;
+        
+        // Count active members
+        const { count, error: membersError } = await supabase
+          .from('members')
+          .select('id', { count: 'exact', head: true })
+          .eq('tontine_id', cycleData.tontine_id)
+          .eq('is_active', true);
+        
+        if (membersError) throw membersError;
+        
+        // Calculate amount per member
+        if (count && count > 0) {
+          const amountPerMember = Math.round((tontineData.amount / count) * 100) / 100;
+          setDefaultAmount(amountPerMember);
+        }
+      } catch (error) {
+        console.error('Error fetching tontine info:', error);
+      }
+    };
+    
+    if (isOpen) {
+      fetchTontineInfo();
+    }
+  }, [isOpen]);
+  
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      amount: 250, // Using a default amount instead of trying to access member.amount
+      amount: defaultAmount,
       date: new Date(),
       notes: '',
     },
+    values: {
+      amount: defaultAmount,
+      date: new Date(),
+      notes: '',
+    }
   });
+  
+  // Update form values when defaultAmount changes
+  useEffect(() => {
+    form.setValue('amount', defaultAmount);
+  }, [defaultAmount, form]);
   
   const onSubmit = (data: FormValues) => {
     onRecordPayment(memberId, data.amount);

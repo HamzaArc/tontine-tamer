@@ -19,7 +19,7 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
+import { format, isBefore, isEqual, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,12 +28,13 @@ interface Cycle {
   cycle_number: number;
   start_date: string;
   end_date: string;
-  status: 'upcoming' | 'active' | 'completed';
+  status: 'upcoming' | 'active' | 'ongoing' | 'completed';
   recipient_id: string | null;
   recipient_name?: string;
   tontine_id: string;
   amount?: number;
   contributions_count?: number;
+  members_count?: number;
 }
 
 interface CyclesListProps {
@@ -46,6 +47,39 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
+  
+  const determineStatus = (
+    cycle: any, 
+    paymentsCount: number, 
+    membersCount: number, 
+    hasAnyPayment: boolean
+  ): 'upcoming' | 'active' | 'ongoing' | 'completed' => {
+    const today = new Date();
+    const startDate = parseISO(cycle.start_date);
+    
+    // 1. If cycle's start date is in the future, it's upcoming
+    if (isBefore(today, startDate)) {
+      return 'upcoming';
+    }
+    
+    // 2. If all payments are recorded, it's completed
+    if (paymentsCount === membersCount && membersCount > 0) {
+      return 'completed';
+    }
+    
+    // 3. If at least one payment was recorded, it's ongoing
+    if (hasAnyPayment) {
+      return 'ongoing';
+    }
+    
+    // 4. If cycle's date is less or equal to today's date, it's active
+    if (isBefore(startDate, today) || isEqual(startDate, today)) {
+      return 'active';
+    }
+    
+    // Default to the stored status
+    return cycle.status;
+  };
   
   const fetchCycles = async () => {
     if (!tontineId) return;
@@ -60,6 +94,15 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
         .single();
       
       if (tontineError) throw tontineError;
+      
+      // Count active members in the tontine
+      const { count: membersCount, error: membersCountError } = await supabase
+        .from('members')
+        .select('id', { count: 'exact', head: true })
+        .eq('tontine_id', tontineId)
+        .eq('is_active', true);
+      
+      if (membersCountError) throw membersCountError;
       
       // Fetch cycles for this tontine
       const { data: cyclesData, error: cyclesError } = await supabase
@@ -87,27 +130,44 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             }
           }
           
-          // Count contributions for active cycles
-          let contributionsCount = 0;
-          if (cycle.status !== 'upcoming') {
-            const { count, error: paymentsError } = await supabase
-              .from('payments')
-              .select('*', { count: 'exact', head: true })
-              .eq('cycle_id', cycle.id)
-              .eq('status', 'paid');
+          // Count all payments for this cycle
+          const { count: paymentsCount, error: paymentsCountError } = await supabase
+            .from('payments')
+            .select('*', { count: 'exact', head: true })
+            .eq('cycle_id', cycle.id)
+            .eq('status', 'paid');
             
-            if (!paymentsError) {
-              contributionsCount = count || 0;
-            }
+          if (paymentsCountError) throw paymentsCountError;
+          
+          // Check if there's at least one payment recorded
+          const hasAnyPayment = paymentsCount ? paymentsCount > 0 : false;
+          
+          // Determine the correct status
+          const calculatedStatus = determineStatus(
+            cycle, 
+            paymentsCount || 0, 
+            membersCount || 0, 
+            hasAnyPayment
+          );
+          
+          // Update the cycle status in the database if it's different
+          if (calculatedStatus !== cycle.status) {
+            const { error: updateError } = await supabase
+              .from('cycles')
+              .update({ status: calculatedStatus })
+              .eq('id', cycle.id);
+              
+            if (updateError) console.error('Error updating cycle status:', updateError);
           }
           
           return {
             ...cycle,
             recipient_name: recipientName,
             amount: tontineData.amount,
-            contributions_count: contributionsCount,
-            // Ensure status is properly typed
-            status: cycle.status as 'upcoming' | 'active' | 'completed'
+            contributions_count: paymentsCount || 0,
+            members_count: membersCount || 0,
+            // Use the calculated status
+            status: calculatedStatus
           };
         })
       );
@@ -146,8 +206,24 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
         )
         .subscribe();
       
+      // Also listen for payment changes which could affect cycle status
+      const paymentsChannel = supabase
+        .channel('payments-changes-cycles')
+        .on('postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'payments'
+          },
+          () => {
+            fetchCycles();
+          }
+        )
+        .subscribe();
+      
       return () => {
         supabase.removeChannel(channel);
+        supabase.removeChannel(paymentsChannel);
       };
     }
   }, [tontineId]);
@@ -164,6 +240,7 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
     switch(status) {
       case 'completed': return 'default';
       case 'active': return 'success';
+      case 'ongoing': return 'success';
       case 'upcoming': return 'secondary';
       default: return 'default';
     }
@@ -253,7 +330,7 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       {cycle.status !== 'upcoming' ? (
-                        <span>{cycle.contributions_count} / 8</span>
+                        <span>{cycle.contributions_count} / {cycle.members_count}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
