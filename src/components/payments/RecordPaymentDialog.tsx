@@ -48,6 +48,9 @@ interface Member {
   name: string;
   email: string;
   phone: string;
+  status: 'paid' | 'pending';
+  amount: number;
+  paymentDate?: string;
 }
 
 interface RecordPaymentDialogProps {
@@ -68,7 +71,7 @@ export const RecordPaymentDialog: React.FC<RecordPaymentDialogProps> = ({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      amount: 250, // Using a default amount instead of trying to access member.amount
+      amount: member?.amount || 250,
       date: new Date(),
       notes: '',
     },

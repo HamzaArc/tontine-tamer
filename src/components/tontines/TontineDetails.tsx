@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
@@ -16,10 +17,7 @@ import {
   Clock, 
   ChevronLeft,
   Edit,
-  Loader2,
-  RefreshCw,
-  Plus,
-  User
+  Loader2
 } from 'lucide-react';
 import { 
   Tabs, 
@@ -58,270 +56,166 @@ interface Member {
   is_active: boolean;
 }
 
-interface Cycle {
-  id: string;
-  cycle_number: number;
-  start_date: string;
-  end_date: string;
-  status: 'upcoming' | 'active' | 'completed';
-  recipient_id: string | null;
-  recipient_name?: string;
-}
-
 const TontineDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [tontine, setTontine] = useState<Tontine | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
-  const [cycles, setCycles] = useState<Cycle[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(true);
-  const [cyclesLoading, setCyclesLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   
-  const fetchData = async () => {
-    if (!id) return;
-    
-    setRefreshing(true);
-    await Promise.all([
-      fetchTontineDetails(),
-      fetchMembers(),
-      fetchCycles()
-    ]);
-    setRefreshing(false);
-  };
-  
-  const fetchTontineDetails = async () => {
-    if (!id) return;
-    
-    setLoading(true);
-    try {
-      const { data: tontineData, error: tontineError } = await supabase
-        .from('tontines')
-        .select('*')
-        .eq('id', id)
-        .single();
+  useEffect(() => {
+    const fetchTontineDetails = async () => {
+      if (!id) return;
       
-      if (tontineError) throw tontineError;
-      if (!tontineData) {
+      setLoading(true);
+      try {
+        // Fetch tontine details
+        const { data: tontineData, error: tontineError } = await supabase
+          .from('tontines')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (tontineError) throw tontineError;
+        if (!tontineData) {
+          toast({
+            title: 'Error',
+            description: 'Tontine not found',
+            variant: 'destructive',
+          });
+          navigate('/tontines');
+          return;
+        }
+        
+        // Count members
+        const { count: membersCount, error: countError } = await supabase
+          .from('members')
+          .select('*', { count: 'exact', head: true })
+          .eq('tontine_id', id);
+          
+        if (countError) throw countError;
+        
+        // Calculate tontine status
+        const now = new Date();
+        const startDate = new Date(tontineData.start_date);
+        const endDate = tontineData.end_date ? new Date(tontineData.end_date) : null;
+        
+        let status = 'active';
+        if (startDate > now) {
+          status = 'upcoming';
+        } else if (endDate && endDate < now) {
+          status = 'completed';
+        }
+        
+        // For demonstration, calculate some mock financial data
+        // In a real app, this would come from actual payment records
+        const totalCollected = Math.round(tontineData.amount * (membersCount || 0) * 0.75);
+        
+        // Calculate next payment date
+        let nextPaymentDate = new Date(startDate);
+        while (nextPaymentDate <= now) {
+          switch (tontineData.frequency) {
+            case 'Weekly':
+              nextPaymentDate.setDate(nextPaymentDate.getDate() + 7);
+              break;
+            case 'Bi-weekly':
+              nextPaymentDate.setDate(nextPaymentDate.getDate() + 14);
+              break;
+            case 'Monthly':
+              nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+              break;
+            case 'Quarterly':
+              nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 3);
+              break;
+          }
+        }
+        
+        setTontine({
+          ...tontineData,
+          status,
+          members_count: membersCount || 0,
+          total_collected: totalCollected,
+          next_payment_date: format(nextPaymentDate, 'yyyy-MM-dd'),
+        });
+      } catch (error: any) {
         toast({
           title: 'Error',
-          description: 'Tontine not found',
+          description: error.message || 'Failed to fetch tontine details',
           variant: 'destructive',
         });
-        navigate('/tontines');
-        return;
+      } finally {
+        setLoading(false);
       }
-      
-      const { count: membersCount, error: countError } = await supabase
-        .from('members')
-        .select('*', { count: 'exact', head: true })
-        .eq('tontine_id', id)
-        .eq('is_active', true);
-        
-      if (countError) throw countError;
-      
-      let status = 'active';
-      if (new Date(tontineData.start_date) > new Date()) {
-        status = 'upcoming';
-      } else if (tontineData.end_date && new Date(tontineData.end_date) < new Date()) {
-        status = 'completed';
-      }
-      
-      let totalCollected = 0;
-      
-      const { data: cyclesData, error: cyclesError } = await supabase
-        .from('cycles')
-        .select('id')
-        .eq('tontine_id', id);
-        
-      if (!cyclesError && cyclesData && cyclesData.length > 0) {
-        const cycleIds = cyclesData.map(cycle => cycle.id);
-        
-        const { data: paymentsData, error: paymentsError } = await supabase
-          .from('payments')
-          .select('amount, status')
-          .in('cycle_id', cycleIds)
-          .eq('status', 'paid');
-          
-        if (!paymentsError && paymentsData) {
-          totalCollected = paymentsData.reduce((sum, payment) => sum + Number(payment.amount), 0);
-        }
-      }
-      
-      const nextPaymentDate = new Date(tontineData.start_date);
-      while (nextPaymentDate <= new Date()) {
-        switch (tontineData.frequency) {
-          case 'Weekly':
-            nextPaymentDate.setDate(nextPaymentDate.getDate() + 7);
-            break;
-          case 'Bi-weekly':
-            nextPaymentDate.setDate(nextPaymentDate.getDate() + 14);
-            break;
-          case 'Monthly':
-            nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
-            break;
-          case 'Quarterly':
-            nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 3);
-            break;
-        }
-      }
-      
-      setTontine({
-        ...tontineData,
-        status,
-        members_count: membersCount || 0,
-        total_collected: totalCollected,
-        next_payment_date: format(nextPaymentDate, 'yyyy-MM-dd'),
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to fetch tontine details',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const fetchMembers = async () => {
-    if (!id) return;
+    };
     
-    setMembersLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('members')
-        .select('*')
-        .eq('tontine_id', id)
-        .order('name');
-        
-      if (error) throw error;
-      
-      setMembers(data || []);
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to fetch members',
-        variant: 'destructive',
-      });
-    } finally {
-      setMembersLoading(false);
-    }
-  };
-  
-  const fetchCycles = async () => {
-    if (!id) return;
-    
-    setCyclesLoading(true);
-    try {
-      const { data: cyclesData, error: cyclesError } = await supabase
-        .from('cycles')
-        .select('*')
-        .eq('tontine_id', id)
-        .order('cycle_number', { ascending: true });
-        
-      if (cyclesError) throw cyclesError;
-      
-      const enhancedCycles = await Promise.all(
-        (cyclesData || []).map(async cycle => {
-          let recipientName = 'Unassigned';
-          
-          if (cycle.recipient_id) {
-            const { data: memberData, error: memberError } = await supabase
-              .from('members')
-              .select('name')
-              .eq('id', cycle.recipient_id)
-              .single();
-            
-            if (!memberError && memberData) {
-              recipientName = memberData.name;
-            }
-          }
-          
-          let status: 'upcoming' | 'active' | 'completed' = cycle.status as 'upcoming' | 'active' | 'completed';
-          
-          return {
-            ...cycle,
-            recipient_name: recipientName,
-            status
-          };
-        })
-      );
-      
-      setCycles(enhancedCycles);
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to fetch cycles',
-        variant: 'destructive',
-      });
-    } finally {
-      setCyclesLoading(false);
-    }
-  };
+    fetchTontineDetails();
+  }, [id, toast, navigate]);
   
   useEffect(() => {
-    fetchData();
-    
-    const tontineChannel = supabase
-      .channel('tontine-details-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'tontines',
-          filter: `id=eq.${id}`
-        }, 
-        () => fetchTontineDetails()
-      )
-      .subscribe();
+    const fetchMembers = async () => {
+      if (!id) return;
       
-    const membersChannel = supabase
-      .channel('tontine-members-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'members',
-          filter: `tontine_id=eq.${id}`
-        }, 
-        () => {
-          fetchMembers();
-          fetchTontineDetails();
-        }
-      )
-      .subscribe();
-      
-    const cyclesChannel = supabase
-      .channel('tontine-cycles-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'cycles',
-          filter: `tontine_id=eq.${id}`
-        }, 
-        () => fetchCycles()
-      )
-      .subscribe();
-    
-    return () => {
-      supabase.removeChannel(tontineChannel);
-      supabase.removeChannel(membersChannel);
-      supabase.removeChannel(cyclesChannel);
+      setMembersLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('members')
+          .select('*')
+          .eq('tontine_id', id)
+          .order('name');
+          
+        if (error) throw error;
+        
+        setMembers(data || []);
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to fetch members',
+          variant: 'destructive',
+        });
+      } finally {
+        setMembersLoading(false);
+      }
     };
-  }, [id]);
+    
+    fetchMembers();
+  }, [id, toast]);
   
   const handleMemberAdded = () => {
+    // Refresh the members list when a new member is added
+    const fetchMembers = async () => {
+      if (!id) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('members')
+          .select('*')
+          .eq('tontine_id', id)
+          .order('name');
+          
+        if (error) throw error;
+        
+        setMembers(data || []);
+        
+        // Also update the count in the tontine object
+        if (tontine) {
+          setTontine({
+            ...tontine,
+            members_count: (data || []).length,
+          });
+        }
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to refresh members',
+          variant: 'destructive',
+        });
+      }
+    };
+    
     fetchMembers();
-    fetchTontineDetails();
-  };
-  
-  const handleRefresh = () => {
-    fetchData();
   };
   
   if (loading) {
@@ -365,30 +259,19 @@ const TontineDetails: React.FC = () => {
             {tontine.status}
           </Badge>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={handleRefresh} 
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="sr-only">Refresh</span>
-          </Button>
-          <Button asChild>
-            <Link to={`/tontines/${id}/edit`}>
-              <Edit className="mr-2 h-4 w-4" />
-              Edit Tontine
-            </Link>
-          </Button>
-        </div>
+        <Button asChild>
+          <Link to={`/tontines/${id}/edit`}>
+            <Edit className="mr-2 h-4 w-4" />
+            Edit Tontine
+          </Link>
+        </Button>
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:w-auto md:grid-cols-3">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="members">Members ({tontine.members_count})</TabsTrigger>
-          <TabsTrigger value="cycles" className="hidden md:flex">Cycles ({cycles.length})</TabsTrigger>
+          <TabsTrigger value="cycles" className="hidden md:flex">Cycles</TabsTrigger>
         </TabsList>
         
         <TabsContent value="overview" className="space-y-4">
@@ -527,100 +410,19 @@ const TontineDetails: React.FC = () => {
         
         <TabsContent value="cycles" className="space-y-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Cycles</CardTitle>
-                <CardDescription>
-                  View and manage all payment cycles for this tontine
-                </CardDescription>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="default" asChild>
-                  <Link to={`/cycles?tontine=${id}`}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create Cycle
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link to={`/cycles?tontine=${id}`}>
-                    <Calendar className="mr-2 h-4 w-4" />
-                    View All Cycles
-                  </Link>
-                </Button>
-              </div>
+            <CardHeader>
+              <CardTitle>Cycles</CardTitle>
+              <CardDescription>
+                View and manage all payment cycles for this tontine
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              {cyclesLoading ? (
-                <div className="flex justify-center items-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-              ) : cycles.length > 0 ? (
-                <div className="rounded-md border">
-                  <ScrollArea className="h-[400px]">
-                    <table className="w-full">
-                      <thead className="sticky top-0 bg-white">
-                        <tr className="border-b">
-                          <th className="px-4 py-3 text-left font-medium text-sm">Cycle #</th>
-                          <th className="px-4 py-3 text-left font-medium text-sm">Recipient</th>
-                          <th className="px-4 py-3 text-left font-medium text-sm">Date</th>
-                          <th className="px-4 py-3 text-left font-medium text-sm">Status</th>
-                          <th className="px-4 py-3 text-right font-medium text-sm">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cycles.map((cycle) => (
-                          <tr key={cycle.id} className="border-b hover:bg-muted/50">
-                            <td className="px-4 py-3">
-                              <span className="font-medium">#{cycle.cycle_number}</span>
-                            </td>
-                            <td className="px-4 py-3 flex items-center gap-1">
-                              <User className="h-3.5 w-3.5 text-muted-foreground" />
-                              {cycle.recipient_name}
-                            </td>
-                            <td className="px-4 py-3">
-                              {format(parseISO(cycle.end_date), 'MMM d, yyyy')}
-                            </td>
-                            <td className="px-4 py-3">
-                              <Badge 
-                                variant={
-                                  cycle.status === 'completed' ? 'success' : 
-                                  cycle.status === 'active' ? 'default' : 'secondary'
-                                }
-                              >
-                                {cycle.status}
-                              </Badge>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {cycle.status !== 'upcoming' && (
-                                <Button variant="outline" size="sm" asChild>
-                                  <Link to={`/payments?cycle=${cycle.id}`}>
-                                    <DollarSign className="mr-1 h-3.5 w-3.5" />
-                                    Payments
-                                  </Link>
-                                </Button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </ScrollArea>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 border rounded-lg">
-                  <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No Cycles Yet</h3>
-                  <p className="text-muted-foreground text-center mb-6 max-w-md">
-                    This tontine doesn't have any payment cycles yet. Create a cycle to start collecting payments.
-                  </p>
-                  <Button asChild>
-                    <Link to={`/cycles?tontine=${id}`}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create First Cycle
-                    </Link>
-                  </Button>
-                </div>
-              )}
+            <CardContent className="flex flex-col items-center justify-center p-8">
+              <Button asChild>
+                <Link to={`/cycles?tontine=${id}`}>
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Manage Cycles
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

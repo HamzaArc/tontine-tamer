@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { format, addMonths, startOfMonth } from 'date-fns';
+import { format } from 'date-fns';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import {
   Popover,
@@ -49,6 +49,7 @@ interface Member {
 }
 
 const formSchema = z.object({
+  cycleNumber: z.coerce.number().int().positive({ message: 'Cycle number must be positive.' }),
   date: z.date({
     required_error: 'Date is required.',
   }),
@@ -69,70 +70,28 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
   const { toast } = useToast();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(false);
-  const [nextCycleNumber, setNextCycleNumber] = useState(1);
-  const [nextPayoutDate, setNextPayoutDate] = useState(new Date());
-  const [defaultAmount, setDefaultAmount] = useState(2000);
   
-  // Fetch members and previous cycles to determine defaults
   useEffect(() => {
-    const fetchMembersAndDefaults = async () => {
+    const fetchMembers = async () => {
       if (!tontineId) return;
       
       setLoading(true);
       try {
-        // Fetch members
-        const { data: membersData, error: membersError } = await supabase
+        const { data, error } = await supabase
           .from('members')
           .select('id, name')
           .eq('tontine_id', tontineId)
           .eq('is_active', true)
           .order('name');
           
-        if (membersError) throw membersError;
-        setMembers(membersData || []);
-
-        // Get tontine info for default amount
-        const { data: tontineData, error: tontineError } = await supabase
-          .from('tontines')
-          .select('amount')
-          .eq('id', tontineId)
-          .single();
-          
-        if (tontineError) throw tontineError;
+        if (error) throw error;
         
-        if (tontineData) {
-          setDefaultAmount(tontineData.amount);
-        }
-        
-        // Find the next cycle number
-        const { data: cycles, error: cyclesError } = await supabase
-          .from('cycles')
-          .select('cycle_number, end_date')
-          .eq('tontine_id', tontineId)
-          .order('cycle_number', { ascending: false })
-          .limit(1);
-          
-        if (cyclesError) throw cyclesError;
-        
-        if (cycles && cycles.length > 0) {
-          // Set next cycle number
-          setNextCycleNumber(cycles[0].cycle_number + 1);
-          
-          // Calculate next date based on previous cycle's end date
-          const lastCycleDate = new Date(cycles[0].end_date);
-          const nextDate = addMonths(lastCycleDate, 1);
-          setNextPayoutDate(startOfMonth(nextDate));
-        } else {
-          // First cycle, start with today's date
-          setNextCycleNumber(1);
-          const today = new Date();
-          setNextPayoutDate(today);
-        }
+        setMembers(data || []);
       } catch (error: any) {
-        console.error('Error fetching data:', error);
+        console.error('Error fetching members:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load data. Please try again.',
+          description: 'Failed to load members. Please try again.',
           variant: 'destructive',
         });
       } finally {
@@ -140,57 +99,42 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
       }
     };
     
-    fetchMembersAndDefaults();
+    fetchMembers();
   }, [tontineId, toast]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      date: nextPayoutDate,
+      cycleNumber: 1,
+      date: new Date(),
       recipientId: '',
-      amount: defaultAmount,
+      amount: 2000,
     },
   });
 
-  // Update form values when defaults change
-  useEffect(() => {
-    form.setValue('date', nextPayoutDate);
-    form.setValue('amount', defaultAmount);
-  }, [nextPayoutDate, defaultAmount, form]);
-
   const onSubmit = async (data: FormValues) => {
     try {
-      // Create the new cycle in the database with automatically assigned cycle number
+      // Create the new cycle in the database
       const { data: cycleData, error: cycleError } = await supabase
         .from('cycles')
         .insert({
-          cycle_number: nextCycleNumber,
+          cycle_number: data.cycleNumber,
           tontine_id: tontineId,
           recipient_id: data.recipientId,
           start_date: format(data.date, 'yyyy-MM-dd'),
-          end_date: format(data.date, 'yyyy-MM-dd'), 
-          status: 'upcoming',
+          end_date: format(data.date, 'yyyy-MM-dd'), // For simplicity, using same date 
+          status: 'upcoming'
         })
         .select()
         .single();
         
       if (cycleError) throw cycleError;
       
-      // Update tontine amount if it's different
-      if (data.amount !== defaultAmount) {
-        const { error: tontineError } = await supabase
-          .from('tontines')
-          .update({ amount: data.amount })
-          .eq('id', tontineId);
-          
-        if (tontineError) throw tontineError;
-      }
-      
       const recipientName = members.find(m => m.id === data.recipientId)?.name || 'Unknown';
       
       toast({
         title: 'Cycle created',
-        description: `Cycle #${nextCycleNumber} has been created for ${recipientName}.`,
+        description: `Cycle #${data.cycleNumber} has been created for ${recipientName}.`,
       });
       
       setIsOpen(false);
@@ -199,7 +143,7 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
       console.error('Error creating cycle:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to create cycle. Please try again.',
+        description: 'Failed to create cycle. Please try again.',
         variant: 'destructive',
       });
     }
@@ -223,47 +167,43 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
         
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              name="cycleNumber"
-              render={() => (
-                <FormItem>
-                  <FormLabel>Cycle Number</FormLabel>
-                  <FormControl>
-                    <Input type="number" value={nextCycleNumber} disabled />
-                  </FormControl>
-                  <FormDescription>
-                    Cycle number is automatically assigned
-                  </FormDescription>
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="cycleNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cycle Number</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Total Payout Amount</FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2">$</span>
-                      <Input 
-                        type="number" 
-                        placeholder="2000" 
-                        className="pl-8"
-                        {...field} 
-                      />
-                    </div>
-                  </FormControl>
-                  <FormDescription>
-                    {members.length > 0 
-                      ? `Each member will contribute $${(field.value / members.length).toFixed(2)}`
-                      : 'Add members to calculate individual contributions'}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              <FormField
+                control={form.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payout Amount</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2">$</span>
+                        <Input 
+                          type="number" 
+                          placeholder="2000" 
+                          className="pl-8"
+                          {...field} 
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             
             <FormField
               control={form.control}
@@ -354,7 +294,7 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading || members.length === 0}>Create Cycle</Button>
+              <Button type="submit">Create Cycle</Button>
             </DialogFooter>
           </form>
         </Form>
