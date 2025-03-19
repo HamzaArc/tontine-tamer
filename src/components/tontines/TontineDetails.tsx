@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import PageContainer from '@/components/layout/PageContainer';
-import MembersList from '@/components/tontines/MembersList';
-import AddMemberDialog from '@/components/tontines/AddMemberDialog';
+import { MembersList } from '@/components/tontines/MembersList';
+import { AddMemberDialog } from '@/components/tontines/AddMemberDialog';
 import TontineDetailsHeader from '@/components/tontines/TontineDetailsHeader';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Loader2, Calendar, Clock, DollarSign, Users, User, Plus } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { Button } from '@/components/ui/button';
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Tontine {
   id: string;
@@ -585,3 +588,4 @@ const TontineDetails: React.FC = () => {
 };
 
 export default TontineDetails;
+
