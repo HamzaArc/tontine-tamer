@@ -1,351 +1,365 @@
 
-import React, { useEffect, useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Users, 
-  Wallet, 
-  AlertTriangle, 
-  Calendar,
-  CreditCard
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { BarChart, LineChart, PieChart } from '@/components/ui/chart';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, TrendingUp, TrendingDown, DollarSign, Users, Check, Clock } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Skeleton } from '@/components/ui/skeleton';
+import { format, parseISO, subMonths } from 'date-fns';
 
-interface SummaryData {
-  activeTontines: number;
-  activeMembers: number;
-  totalContributed: number;
-  contributionGrowth: number;
-  pendingPayments: number;
-  overduePayments: number;
-  upcomingPayouts: number;
+interface PaymentData {
+  month: string;
+  completed: number;
+  pending: number;
+}
+
+interface MemberContribution {
+  name: string;
+  amount: number;
+  count: number;
+}
+
+interface TontinePerformance {
+  name: string;
+  completion: number;
+  amount: number;
 }
 
 const ReportsSummary: React.FC = () => {
-  const [summaryData, setSummaryData] = useState<SummaryData>({
-    activeTontines: 0,
-    activeMembers: 0,
-    totalContributed: 0,
-    contributionGrowth: 0,
-    pendingPayments: 0,
-    overduePayments: 0,
-    upcomingPayouts: 0,
-  });
+  const [timeFrame, setTimeFrame] = useState<'month6' | 'month3' | 'month1'>('month3');
   const [loading, setLoading] = useState(true);
+  const [paymentData, setPaymentData] = useState<PaymentData[]>([]);
+  const [memberContributions, setMemberContributions] = useState<MemberContribution[]>([]);
+  const [tontinePerformance, setTontinePerformance] = useState<TontinePerformance[]>([]);
+  const { toast } = useToast();
   const { user } = useAuth();
-  
+
   useEffect(() => {
-    const fetchSummaryData = async () => {
-      if (!user) return;
+    if (user) {
+      loadReportData();
       
-      try {
-        setLoading(true);
+      // Set up real-time subscription
+      const channel = supabase
+        .channel(`reports-changes-${user.id}`)
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'payments'
+          }, 
+          () => {
+            loadReportData();
+          }
+        )
+        .on('postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'tontines',
+            filter: `created_by=eq.${user.id}`
+          },
+          () => {
+            loadReportData();
+          }
+        )
+        .subscribe();
         
-        // Get tontines
-        const { data: tontines, error: tontinesError } = await supabase
-          .from('tontines')
-          .select('id, amount')
-          .eq('created_by', user.id);
-          
-        if (tontinesError) throw tontinesError;
-        
-        if (!tontines || tontines.length === 0) {
-          setLoading(false);
-          return;
-        }
-        
-        const tontineIds = tontines.map(t => t.id);
-        
-        // Get active tontines (those with active cycles)
-        const { data: activeCycles, error: cyclesError } = await supabase
-          .from('cycles')
-          .select('id, tontine_id')
-          .in('tontine_id', tontineIds)
-          .eq('status', 'active');
-          
-        if (cyclesError) throw cyclesError;
-        
-        const activeTontinesIds = [...new Set(activeCycles?.map(c => c.tontine_id) || [])];
-        
-        // Get members in all tontines
-        const { data: members, error: membersError } = await supabase
-          .from('members')
-          .select('id, tontine_id')
-          .in('tontine_id', tontineIds)
-          .eq('is_active', true);
-          
-        if (membersError) throw membersError;
-        
-        // Count members in active tontines
-        const activeMembers = members?.filter(m => activeTontinesIds.includes(m.tontine_id)).length || 0;
-        
-        // Get total contributions
-        const { data: payments, error: paymentsError } = await supabase
-          .from('payments')
-          .select('amount, payment_date')
-          .eq('status', 'completed');
-          
-        if (paymentsError) throw paymentsError;
-        
-        const totalContributed = payments?.reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0) || 0;
-        
-        // Calculate contribution growth (comparing current month to previous month)
-        const now = new Date();
-        const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        
-        const currentMonthPayments = payments?.filter(p => {
-          const paymentDate = new Date(p.payment_date);
-          return paymentDate >= currentMonthStart && paymentDate < now;
-        });
-        
-        const previousMonthPayments = payments?.filter(p => {
-          const paymentDate = new Date(p.payment_date);
-          return paymentDate >= previousMonthStart && paymentDate < currentMonthStart;
-        });
-        
-        const currentMonthTotal = currentMonthPayments?.reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0) || 0;
-        const previousMonthTotal = previousMonthPayments?.reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0) || 0;
-        
-        let contributionGrowth = 0;
-        if (previousMonthTotal > 0) {
-          contributionGrowth = Math.round(((currentMonthTotal - previousMonthTotal) / previousMonthTotal) * 100);
-        }
-        
-        // Get pending and overdue payments
-        const activeCycleIds = activeCycles?.map(c => c.id) || [];
-        let pendingPayments = 0;
-        let overduePayments = 0;
-        
-        if (activeCycleIds.length > 0 && activeCycles) {
-          await Promise.all(
-            activeCycles.map(async (cycle) => {
-              // Get members who should pay in this cycle
-              const { data: cycleMembers, error: cycleMembersError } = await supabase
-                .from('members')
-                .select('id')
-                .eq('tontine_id', cycle.tontine_id)
-                .eq('is_active', true);
-                
-              if (cycleMembersError) throw cycleMembersError;
-              
-              if (!cycleMembers || cycleMembers.length === 0) return;
-              
-              // Get members who have already paid
-              const { data: paidMembers, error: paidMembersError } = await supabase
-                .from('payments')
-                .select('member_id')
-                .eq('cycle_id', cycle.id)
-                .eq('status', 'completed');
-                
-              if (paidMembersError) throw paidMembersError;
-              
-              const paidMemberIds = paidMembers?.map(p => p.member_id) || [];
-              const unpaidMembers = cycleMembers.filter(m => !paidMemberIds.includes(m.id));
-              
-              // Get cycle end date to check if overdue
-              const { data: cycleData, error: cycleError } = await supabase
-                .from('cycles')
-                .select('end_date')
-                .eq('id', cycle.id)
-                .single();
-                
-              if (cycleError) throw cycleError;
-              
-              // Check if cycle end date is past
-              const cycleEndDate = new Date(cycleData.end_date);
-              const isOverdue = cycleEndDate < now;
-              
-              if (isOverdue) {
-                overduePayments += unpaidMembers.length;
-              } else {
-                pendingPayments += unpaidMembers.length;
-              }
-            })
-          );
-        }
-        
-        // Get upcoming payouts (cycles ending in next 30 days)
-        const thirtyDaysFromNow = new Date(now);
-        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-        
-        const { count: upcomingPayouts, error: upcomingError } = await supabase
-          .from('cycles')
-          .select('id', { count: 'exact', head: true })
-          .in('tontine_id', tontineIds)
-          .eq('status', 'active')
-          .lte('end_date', thirtyDaysFromNow.toISOString())
-          .gte('end_date', now.toISOString());
-          
-        if (upcomingError) throw upcomingError;
-        
-        setSummaryData({
-          activeTontines: activeTontinesIds.length,
-          activeMembers,
-          totalContributed,
-          contributionGrowth,
-          pendingPayments,
-          overduePayments,
-          upcomingPayouts: upcomingPayouts || 0
-        });
-      } catch (error) {
-        console.error('Error fetching summary data:', error);
-      } finally {
-        setLoading(false);
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user, timeFrame]);
+
+  const loadReportData = async () => {
+    if (!user) return;
+    
+    try {
+      setLoading(true);
+      
+      // Get time frame dates
+      const now = new Date();
+      let startDate: Date;
+      
+      if (timeFrame === 'month6') {
+        startDate = subMonths(now, 6);
+      } else if (timeFrame === 'month3') {
+        startDate = subMonths(now, 3);
+      } else {
+        startDate = subMonths(now, 1);
       }
-    };
-    
-    fetchSummaryData();
-    
-    // Set up realtime subscription
-    const channel = supabase
-      .channel('reports-summary-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'tontines',
-          filter: `created_by=eq.${user?.id}`
-        }, 
-        () => {
-          fetchSummaryData();
-        }
-      )
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'cycles'
-        }, 
-        () => {
-          fetchSummaryData();
-        }
-      )
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'payments'
-        }, 
-        () => {
-          fetchSummaryData();
-        }
-      )
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'members'
-        }, 
-        () => {
-          fetchSummaryData();
-        }
-      )
-      .subscribe();
       
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-  
-  if (loading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <Card key={i}>
-            <CardContent className="pt-6">
-              <div className="animate-pulse space-y-2">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-8 w-12" />
-                <Skeleton className="h-4 w-32 mt-2" />
-              </div>
+      // Get tontine ids for this user
+      const { data: tontineIds, error: tontineIdsError } = await supabase
+        .from('tontines')
+        .select('id, name')
+        .eq('created_by', user.id);
+        
+      if (tontineIdsError) throw tontineIdsError;
+      
+      const tontineIdList = tontineIds?.map(t => t.id) || [];
+      
+      if (tontineIdList.length === 0) {
+        setPaymentData([]);
+        setMemberContributions([]);
+        setTontinePerformance([]);
+        setLoading(false);
+        return;
+      }
+      
+      // Get all payments within time frame
+      const { data: payments, error: paymentsError } = await supabase
+        .from('payments')
+        .select(`
+          *,
+          members(name, tontine_id),
+          cycles(tontine_id)
+        `)
+        .in('cycles.tontine_id', tontineIdList)
+        .gte('payment_date', startDate.toISOString());
+        
+      if (paymentsError) throw paymentsError;
+      
+      // Process payment data by month
+      const paymentsByMonth: Record<string, { completed: number; pending: number }> = {};
+      
+      // Initialize months array
+      const monthsData: PaymentData[] = [];
+      let currentDate = new Date(startDate);
+      
+      while (currentDate <= now) {
+        const monthKey = format(currentDate, 'yyyy-MM');
+        const monthLabel = format(currentDate, 'MMM yyyy');
+        
+        paymentsByMonth[monthKey] = {
+          completed: 0,
+          pending: 0
+        };
+        
+        monthsData.push({
+          month: monthLabel,
+          completed: 0,
+          pending: 0
+        });
+        
+        currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      }
+      
+      // Fill in payment data
+      payments?.forEach(payment => {
+        const paymentMonth = format(parseISO(payment.payment_date), 'yyyy-MM');
+        
+        if (paymentsByMonth[paymentMonth]) {
+          if (payment.status === 'completed') {
+            paymentsByMonth[paymentMonth].completed += payment.amount;
+          } else {
+            paymentsByMonth[paymentMonth].pending += payment.amount;
+          }
+        }
+      });
+      
+      // Convert to array for chart
+      const formattedPaymentData = Object.entries(paymentsByMonth).map(([month, data]) => ({
+        month: format(parseISO(`${month}-01`), 'MMM yyyy'),
+        completed: data.completed,
+        pending: data.pending
+      }));
+      
+      // Process member contributions
+      const memberData: Record<string, { amount: number; count: number }> = {};
+      
+      payments?.forEach(payment => {
+        const memberName = payment.members?.name || 'Unknown';
+        
+        if (!memberData[memberName]) {
+          memberData[memberName] = { amount: 0, count: 0 };
+        }
+        
+        if (payment.status === 'completed') {
+          memberData[memberName].amount += payment.amount;
+          memberData[memberName].count += 1;
+        }
+      });
+      
+      // Convert to array and sort
+      const formattedMemberData = Object.entries(memberData)
+        .map(([name, data]) => ({
+          name,
+          amount: data.amount,
+          count: data.count
+        }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5); // Top 5 contributors
+      
+      // Process tontine performance
+      const tontineData: Record<string, { completed: number; total: number; amount: number }> = {};
+      
+      tontineIds?.forEach(tontine => {
+        tontineData[tontine.id] = {
+          completed: 0,
+          total: 0,
+          amount: 0
+        };
+      });
+      
+      payments?.forEach(payment => {
+        const tontineId = payment.cycles?.tontine_id;
+        
+        if (tontineId && tontineData[tontineId]) {
+          tontineData[tontineId].total += 1;
+          
+          if (payment.status === 'completed') {
+            tontineData[tontineId].completed += 1;
+            tontineData[tontineId].amount += payment.amount;
+          }
+        }
+      });
+      
+      // Convert to array and calculate completion rate
+      const formattedTontineData = tontineIds
+        ?.map(tontine => {
+          const data = tontineData[tontine.id];
+          return {
+            name: tontine.name,
+            completion: data.total > 0 ? (data.completed / data.total) * 100 : 0,
+            amount: data.amount
+          };
+        })
+        .sort((a, b) => b.completion - a.completion);
+      
+      setPaymentData(formattedPaymentData);
+      setMemberContributions(formattedMemberData);
+      setTontinePerformance(formattedTontineData);
+      
+    } catch (error: any) {
+      console.error('Error loading report data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load report data',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  const formatPercentage = (value: number) => {
+    return `${Math.round(value)}%`;
+  };
+
+  const paymentChartConfig = {
+    data: paymentData,
+    categories: ['completed', 'pending'],
+    colors: ['#16a34a', '#ef4444'],
+    valueFormatter: formatCurrency,
+    showLegend: true,
+  };
+
+  const membersChartConfig = {
+    data: memberContributions.map(item => ({
+      name: item.name,
+      value: item.amount,
+    })),
+    colors: ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'],
+    valueFormatter: formatCurrency,
+    showLegend: true,
+  };
+
+  const tontineChartConfig = {
+    data: tontinePerformance,
+    categories: ['completion'],
+    index: 'name',
+    colors: ['#3b82f6'],
+    valueFormatter: formatPercentage,
+    showLegend: false,
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <Tabs
+          defaultValue="month3"
+          value={timeFrame}
+          onValueChange={(value) => setTimeFrame(value as 'month6' | 'month3' | 'month1')}
+        >
+          <TabsList>
+            <TabsTrigger value="month6">Last 6 Months</TabsTrigger>
+            <TabsTrigger value="month3">Last 3 Months</TabsTrigger>
+            <TabsTrigger value="month1">Last Month</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+      </div>
+
+      {!loading && paymentData.length === 0 ? (
+        <Card>
+          <CardContent className="py-10">
+            <div className="text-center">
+              <Users className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No Report Data Available</h3>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Start adding tontines and recording payments to see reports and analytics
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <DollarSign className="h-4 w-4 mr-2" />
+                Payment Activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <BarChart 
+                className="h-80"
+                {...paymentChartConfig}
+              />
             </CardContent>
           </Card>
-        ))}
-      </div>
-    );
-  }
-  
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Active Tontines</p>
-              <h3 className="text-2xl font-bold mt-1">{summaryData.activeTontines}</h3>
-            </div>
-            <div className="p-2 bg-primary/10 rounded-full">
-              <Users className="h-4 w-4 text-primary" />
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1">
-            <Users className="h-3 w-3" />
-            {summaryData.activeMembers} total members
-          </p>
-        </CardContent>
-      </Card>
-      
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Contributions</p>
-              <h3 className="text-2xl font-bold mt-1">${summaryData.totalContributed.toFixed(2)}</h3>
-            </div>
-            <div className="p-2 bg-primary/10 rounded-full">
-              <Wallet className="h-4 w-4 text-primary" />
-            </div>
-          </div>
-          <p className="text-sm mt-2 flex items-center gap-1" 
-             style={{ color: summaryData.contributionGrowth >= 0 ? 'green' : 'red' }}>
-            {summaryData.contributionGrowth >= 0 ? (
-              <TrendingUp className="h-3 w-3" />
-            ) : (
-              <TrendingDown className="h-3 w-3" />
-            )}
-            {Math.abs(summaryData.contributionGrowth)}% {summaryData.contributionGrowth >= 0 ? 'increase' : 'decrease'} this month
-          </p>
-        </CardContent>
-      </Card>
-      
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Pending Payments</p>
-              <h3 className="text-2xl font-bold mt-1">{summaryData.pendingPayments}</h3>
-            </div>
-            <div className="p-2 bg-yellow-100 rounded-full">
-              <CreditCard className="h-4 w-4 text-yellow-500" />
-            </div>
-          </div>
-          <p className="text-sm text-red-500 mt-2 flex items-center gap-1">
-            <AlertTriangle className="h-3 w-3" />
-            {summaryData.overduePayments} overdue
-          </p>
-        </CardContent>
-      </Card>
-      
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Upcoming Payouts</p>
-              <h3 className="text-2xl font-bold mt-1">{summaryData.upcomingPayouts}</h3>
-            </div>
-            <div className="p-2 bg-green-100 rounded-full">
-              <Calendar className="h-4 w-4 text-green-500" />
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1">
-            Next in the next 30 days
-          </p>
-        </CardContent>
-      </Card>
+          
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Users className="h-4 w-4 mr-2" />
+                Top Contributors
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PieChart 
+                className="h-80"
+                {...membersChartConfig}
+              />
+            </CardContent>
+          </Card>
+          
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Check className="h-4 w-4 mr-2" />
+                Tontine Performance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <BarChart 
+                className="h-80"
+                {...tontineChartConfig}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { UserPlus, Loader2 } from 'lucide-react';
@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { supabase } from '@/integrations/supabase/client';
+import { useInvitation } from '@/hooks/useInvitation';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({ tontineId, onM
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { processInvitation } = useInvitation();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -61,14 +63,17 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({ tontineId, onM
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true);
     try {
-      const { error } = await supabase
+      // Insert the new member
+      const { data: newMember, error } = await supabase
         .from('members')
         .insert({
           tontine_id: tontineId,
           name: data.name,
           email: data.email,
           phone: data.phone,
-        });
+        })
+        .select('id')
+        .single();
 
       if (error) throw error;
       
@@ -76,6 +81,24 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({ tontineId, onM
         title: 'Member added',
         description: `${data.name} has been added to the tontine.`,
       });
+      
+      // Get the invitation that was automatically created by the trigger
+      const { data: invitation, error: invitationError } = await supabase
+        .from('invitations')
+        .select('id')
+        .eq('member_id', newMember.id)
+        .single();
+        
+      if (invitationError) {
+        console.error('Error fetching invitation:', invitationError);
+      } else if (invitation) {
+        // Process the invitation
+        try {
+          await processInvitation(invitation.id);
+        } catch (inviteError) {
+          console.error('Error processing invitation:', inviteError);
+        }
+      }
       
       setIsOpen(false);
       form.reset();
