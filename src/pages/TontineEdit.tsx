@@ -42,6 +42,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import PageContainer from '@/components/layout/PageContainer';
+import { useAuth } from '@/contexts/AuthContext';
 
 type FrequencyType = 'Weekly' | 'Bi-weekly' | 'Monthly' | 'Quarterly';
 
@@ -65,6 +66,7 @@ const TontineEdit: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [tontineId, setTontineId] = useState(id);
+  const [tontinetName, setTontineName] = useState("");
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -93,6 +95,7 @@ const TontineEdit: React.FC = () => {
 
         if (data) {
           const frequency = data.frequency as FrequencyType;
+          setTontineName(data.name);
           
           form.reset({
             name: data.name,
@@ -176,7 +179,7 @@ const TontineEdit: React.FC = () => {
 
   if (loading) {
     return (
-      <PageContainer title={loading ? 'Loading...' : `Edit ${tontine?.name || 'Tontine'}`}>
+      <PageContainer title={loading ? 'Loading...' : `Edit ${tontinetName || 'Tontine'}`}>
         <div className="flex justify-center items-center h-96">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -185,7 +188,7 @@ const TontineEdit: React.FC = () => {
   }
 
   return (
-    <PageContainer title={loading ? 'Loading...' : `Edit ${tontine?.name || 'Tontine'}`}>
+    <PageContainer title={loading ? 'Loading...' : `Edit ${tontinetName || 'Tontine'}`}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <Button 
@@ -198,7 +201,7 @@ const TontineEdit: React.FC = () => {
             Back to Tontine
           </Button>
           
-          <h1 className="text-2xl font-bold">{loading ? 'Loading...' : `Edit ${tontine?.name || 'Tontine'}`}</h1>
+          <h1 className="text-2xl font-bold">{loading ? 'Loading...' : `Edit ${tontinetName || 'Tontine'}`}</h1>
         </div>
         
         <Form {...form}>
