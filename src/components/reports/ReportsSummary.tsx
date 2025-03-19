@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, LineChart, PieChart } from '@/components/ui/chart';
+import { BarChart, LineChart, PieChart } from '@/components/ui/custom-charts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, TrendingUp, TrendingDown, DollarSign, Users, Check, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -108,6 +108,24 @@ const ReportsSummary: React.FC = () => {
         return;
       }
       
+      // Get cycles for these tontines
+      const { data: cycles, error: cyclesError } = await supabase
+        .from('cycles')
+        .select('id, tontine_id')
+        .in('tontine_id', tontineIdList);
+        
+      if (cyclesError) throw cyclesError;
+      
+      const cycleIdList = cycles?.map(c => c.id) || [];
+      
+      if (cycleIdList.length === 0) {
+        setPaymentData([]);
+        setMemberContributions([]);
+        setTontinePerformance([]);
+        setLoading(false);
+        return;
+      }
+      
       // Get all payments within time frame
       const { data: payments, error: paymentsError } = await supabase
         .from('payments')
@@ -116,7 +134,7 @@ const ReportsSummary: React.FC = () => {
           members(name, tontine_id),
           cycles(tontine_id)
         `)
-        .in('cycles.tontine_id', tontineIdList)
+        .in('cycle_id', cycleIdList)
         .gte('payment_date', startDate.toISOString());
         
       if (paymentsError) throw paymentsError;
@@ -229,8 +247,11 @@ const ReportsSummary: React.FC = () => {
         .sort((a, b) => b.completion - a.completion);
       
       setPaymentData(formattedPaymentData);
-      setMemberContributions(formattedMemberData);
-      setTontinePerformance(formattedTontineData);
+      setMemberContributions(formattedMemberData.map(item => ({
+        name: item.name,
+        value: item.amount
+      })));
+      setTontinePerformance(formattedTontineData || []);
       
     } catch (error: any) {
       console.error('Error loading report data:', error);
@@ -254,33 +275,6 @@ const ReportsSummary: React.FC = () => {
 
   const formatPercentage = (value: number) => {
     return `${Math.round(value)}%`;
-  };
-
-  const paymentChartConfig = {
-    data: paymentData,
-    categories: ['completed', 'pending'],
-    colors: ['#16a34a', '#ef4444'],
-    valueFormatter: formatCurrency,
-    showLegend: true,
-  };
-
-  const membersChartConfig = {
-    data: memberContributions.map(item => ({
-      name: item.name,
-      value: item.amount,
-    })),
-    colors: ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'],
-    valueFormatter: formatCurrency,
-    showLegend: true,
-  };
-
-  const tontineChartConfig = {
-    data: tontinePerformance,
-    categories: ['completion'],
-    index: 'name',
-    colors: ['#3b82f6'],
-    valueFormatter: formatPercentage,
-    showLegend: false,
   };
 
   return (
@@ -324,7 +318,11 @@ const ReportsSummary: React.FC = () => {
             <CardContent>
               <BarChart 
                 className="h-80"
-                {...paymentChartConfig}
+                data={paymentData}
+                categories={['completed', 'pending']}
+                colors={['#16a34a', '#ef4444']}
+                valueFormatter={formatCurrency}
+                showLegend={true}
               />
             </CardContent>
           </Card>
@@ -339,7 +337,10 @@ const ReportsSummary: React.FC = () => {
             <CardContent>
               <PieChart 
                 className="h-80"
-                {...membersChartConfig}
+                data={memberContributions}
+                colors={['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b']}
+                valueFormatter={formatCurrency}
+                showLegend={true}
               />
             </CardContent>
           </Card>
@@ -354,7 +355,12 @@ const ReportsSummary: React.FC = () => {
             <CardContent>
               <BarChart 
                 className="h-80"
-                {...tontineChartConfig}
+                data={tontinePerformance}
+                categories={['completion']}
+                index='name'
+                colors={['#3b82f6']}
+                valueFormatter={formatPercentage}
+                showLegend={false}
               />
             </CardContent>
           </Card>

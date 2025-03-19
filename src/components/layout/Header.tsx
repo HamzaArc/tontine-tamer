@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { User, Bell, Menu, LogOut, Settings, UserCircle } from 'lucide-react';
+import { User, Bell, Menu, LogOut, Settings, UserCircle, HelpCircle } from 'lucide-react';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +17,11 @@ import SideNavigation from './SideNavigation';
 import { OnboardingTour } from '@/components/onboarding/OnboardingTour';
 import { useToast } from '@/hooks/use-toast';
 
-const Header: React.FC = () => {
+interface HeaderProps {
+  title?: string;
+}
+
+const Header: React.FC<HeaderProps> = ({ title }) => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -80,7 +84,10 @@ const Header: React.FC = () => {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="pr-0">
-              <SideNavigation mobile onNavigate={() => setShowMobileMenu(false)} />
+              <SideNavigation 
+                isMobile={true} 
+                onNavigate={() => setShowMobileMenu(false)} 
+              />
             </SheetContent>
           </Sheet>
         </div>
@@ -95,6 +102,28 @@ const Header: React.FC = () => {
         <div className="flex-1"></div>
 
         <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <HelpCircle className="h-5 w-5" />
+                <span className="sr-only">Onboarding Tour</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Onboarding Tour</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => {}}>
+                Start Tour
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {}}>
+                Show Features
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {}}>
+                Help Center
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
           <OnboardingTour />
           
           <DropdownMenu open={showNotifications} onOpenChange={setShowNotifications}>

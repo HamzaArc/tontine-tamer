@@ -74,9 +74,18 @@ const DashboardSummary: React.FC = () => {
         .select('status, amount');
       
       if (tontineIdList.length > 0) {
-        timeFilterQuery = timeFilterQuery.in('cycle_id', function(subquery) {
-          return subquery.select('id').from('cycles').in('tontine_id', tontineIdList);
-        });
+        const { data: cycleIds, error: cycleError } = await supabase
+          .from('cycles')
+          .select('id')
+          .in('tontine_id', tontineIdList);
+          
+        if (cycleError) throw cycleError;
+        
+        const cycleIdList = cycleIds?.map(c => c.id) || [];
+        
+        if (cycleIdList.length > 0) {
+          timeFilterQuery = timeFilterQuery.in('cycle_id', cycleIdList);
+        }
       }
       
       // Add time frame filter if needed
