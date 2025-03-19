@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
@@ -57,27 +56,22 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
     const today = new Date();
     const startDate = parseISO(cycle.start_date);
     
-    // 1. If cycle's start date is in the future, it's upcoming
     if (isBefore(today, startDate)) {
       return 'upcoming';
     }
     
-    // 2. If all payments are recorded, it's completed
     if (paymentsCount === membersCount && membersCount > 0) {
       return 'completed';
     }
     
-    // 3. If at least one payment was recorded, it's ongoing
     if (hasAnyPayment) {
       return 'ongoing';
     }
     
-    // 4. If cycle's date is less or equal to today's date, it's active
     if (isBefore(startDate, today) || isEqual(startDate, today)) {
       return 'active';
     }
     
-    // Default to the stored status
     return cycle.status;
   };
   
@@ -88,7 +82,6 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
     try {
       console.log('Fetching cycles for tontine:', tontineId);
       
-      // Fetch tontine to get amount
       const { data: tontineData, error: tontineError } = await supabase
         .from('tontines')
         .select('amount')
@@ -97,7 +90,6 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
       
       if (tontineError) throw tontineError;
       
-      // Count active members in the tontine
       const { count: membersCount, error: membersCountError } = await supabase
         .from('members')
         .select('id', { count: 'exact', head: true })
@@ -106,7 +98,6 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
       
       if (membersCountError) throw membersCountError;
       
-      // Fetch cycles for this tontine
       const { data: cyclesData, error: cyclesError } = await supabase
         .from('cycles')
         .select('*')
@@ -117,7 +108,6 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
 
       console.log('Cycles data:', cyclesData);
       
-      // For cycles with recipients, get recipient names
       const enhancedCycles = await Promise.all(
         (cyclesData || []).map(async (cycle) => {
           let recipientName = 'Unassigned';
@@ -134,7 +124,6 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             }
           }
           
-          // Count all payments for this cycle
           const { count: paymentsCount, error: paymentsCountError } = await supabase
             .from('payments')
             .select('*', { count: 'exact', head: true })
@@ -143,10 +132,8 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             
           if (paymentsCountError) throw paymentsCountError;
           
-          // Check if there's at least one payment recorded
           const hasAnyPayment = paymentsCount ? paymentsCount > 0 : false;
           
-          // Determine the correct status
           const calculatedStatus = determineStatus(
             cycle, 
             paymentsCount || 0, 
@@ -154,7 +141,6 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             hasAnyPayment
           );
           
-          // Update the cycle status in the database if it's different
           if (calculatedStatus !== cycle.status) {
             const { error: updateError } = await supabase
               .from('cycles')
@@ -170,7 +156,6 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             amount: tontineData.amount,
             contributions_count: paymentsCount || 0,
             members_count: membersCount || 0,
-            // Use the calculated status
             status: calculatedStatus
           };
         })
@@ -195,9 +180,13 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
     if (tontineId) {
       fetchCycles();
       
-      // Set up realtime subscription for cycles
+      const cyclesChannelName = `cycles-changes-list-${tontineId}-${Date.now()}`;
+      const paymentsChannelName = `payments-changes-cycles-list-${tontineId}-${Date.now()}`;
+      
+      console.log('Setting up realtime subscription on channel:', cyclesChannelName);
+      
       const cyclesChannel = supabase
-        .channel('cycles-changes-' + tontineId)
+        .channel(cyclesChannelName)
         .on('postgres_changes', 
           { 
             event: '*', 
@@ -206,15 +195,18 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             filter: `tontine_id=eq.${tontineId}`
           }, 
           (payload) => {
-            console.log('Cycles change detected:', payload);
+            console.log('Cycles change detected in CyclesList:', payload);
             fetchCycles();
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log(`Realtime subscription status for ${cyclesChannelName}:`, status);
+        });
       
-      // Also listen for payment changes which could affect cycle status
+      console.log('Setting up realtime subscription on channel:', paymentsChannelName);
+      
       const paymentsChannel = supabase
-        .channel('payments-changes-cycles-' + tontineId)
+        .channel(paymentsChannelName)
         .on('postgres_changes',
           {
             event: '*',
@@ -222,13 +214,16 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             table: 'payments'
           },
           (payload) => {
-            console.log('Payment change detected that might affect cycle status:', payload);
+            console.log('Payment change detected in CyclesList:', payload);
             fetchCycles();
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log(`Realtime subscription status for ${paymentsChannelName}:`, status);
+        });
       
       return () => {
+        console.log('Cleaning up supabase channels:', cyclesChannelName, paymentsChannelName);
         supabase.removeChannel(cyclesChannel);
         supabase.removeChannel(paymentsChannel);
       };

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -36,6 +35,7 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
 
       setLoading(true);
       try {
+        console.log('Fetching payment summary for cycle:', cycleId);
         // Fetch cycle details with tontine info
         const { data: cycleData, error: cycleError } = await supabase
           .from('cycles')
@@ -130,9 +130,14 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
     
     fetchPaymentSummary();
     
-    // Set up realtime subscriptions
+    // Set up realtime subscriptions with unique channel names
+    const paymentsChannelName = `payments-changes-summary-${cycleId}-${Date.now()}`;
+    const cyclesChannelName = `cycles-changes-summary-${cycleId}-${Date.now()}`;
+    
+    console.log('Setting up realtime subscription on channel:', paymentsChannelName);
+    
     const paymentsChannel = supabase
-      .channel('payments-changes-summary')
+      .channel(paymentsChannelName)
       .on('postgres_changes', 
         { 
           event: '*', 
@@ -140,14 +145,19 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
           table: 'payments',
           filter: `cycle_id=eq.${cycleId}`
         }, 
-        () => {
+        (payload) => {
+          console.log('Payment change detected in PaymentsSummary:', payload);
           fetchPaymentSummary();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`Realtime subscription status for ${paymentsChannelName}:`, status);
+      });
       
+    console.log('Setting up realtime subscription on channel:', cyclesChannelName);
+    
     const cyclesChannel = supabase
-      .channel('cycles-changes-summary')
+      .channel(cyclesChannelName)
       .on('postgres_changes', 
         { 
           event: '*', 
@@ -155,13 +165,17 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
           table: 'cycles',
           filter: `id=eq.${cycleId}`
         }, 
-        () => {
+        (payload) => {
+          console.log('Cycle change detected in PaymentsSummary:', payload);
           fetchPaymentSummary();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`Realtime subscription status for ${cyclesChannelName}:`, status);
+      });
     
     return () => {
+      console.log('Cleaning up supabase channels:', paymentsChannelName, cyclesChannelName);
       supabase.removeChannel(paymentsChannel);
       supabase.removeChannel(cyclesChannel);
     };

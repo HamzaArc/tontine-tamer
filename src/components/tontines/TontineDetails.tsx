@@ -1,39 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle, 
-  CardDescription 
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { 
-  UserPlus, 
-  Calendar, 
-  DollarSign, 
-  Users, 
-  Clock, 
-  ChevronLeft,
-  Edit,
-  Loader2,
-  RefreshCw,
-  Plus,
-  User
-} from 'lucide-react';
-import { 
-  Tabs, 
-  TabsContent, 
-  TabsList, 
-  TabsTrigger 
-} from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { AddMemberDialog } from './AddMemberDialog';
-import { MembersList } from './MembersList';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { useToast } from '@/hooks/use-toast';
+import { useParams, useNavigate } from 'react-router-dom';
+import PageContainer from '@/components/layout/PageContainer';
+import MembersList from '@/components/tontines/MembersList';
+import AddMemberDialog from '@/components/tontines/AddMemberDialog';
+import TontineDetailsHeader from '@/components/tontines/TontineDetailsHeader';
 import { supabase } from '@/integrations/supabase/client';
-import { format, parseISO, differenceInCalendarDays } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface Tontine {
   id: string;
@@ -324,65 +300,44 @@ const TontineDetails: React.FC = () => {
     fetchData();
   };
   
+  const openAddMemberDialog = () => {
+    // Implement logic to open the add member dialog
+  };
+  
+  const closeAddMemberDialog = () => {
+    // Implement logic to close the add member dialog
+  };
+  
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <PageContainer title="Tontine Details">
+        <div className="flex justify-center items-center h-96">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </PageContainer>
     );
   }
   
   if (!tontine) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" asChild>
-            <Link to="/tontines">
-              <ChevronLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold">Tontine Not Found</h1>
+      <PageContainer title="Not Found">
+        <div className="flex flex-col items-center justify-center gap-4 py-12">
+          <h2 className="text-xl font-medium">Tontine not found</h2>
+          <p className="text-muted-foreground">The tontine you're looking for doesn't exist or you don't have access to it.</p>
+          <Button onClick={() => navigate('/tontines')}>Back to Tontines</Button>
         </div>
-        <p>The tontine you're looking for doesn't exist or you don't have permission to view it.</p>
-        <Button asChild>
-          <Link to="/tontines">Back to Tontines</Link>
-        </Button>
-      </div>
+      </PageContainer>
     );
   }
   
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" asChild>
-            <Link to="/tontines">
-              <ChevronLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold">{tontine.name}</h1>
-          <Badge variant={tontine.status === 'active' ? 'default' : 'secondary'}>
-            {tontine.status}
-          </Badge>
-        </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={handleRefresh} 
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="sr-only">Refresh</span>
-          </Button>
-          <Button asChild>
-            <Link to={`/tontines/${id}/edit`}>
-              <Edit className="mr-2 h-4 w-4" />
-              Edit Tontine
-            </Link>
-          </Button>
-        </div>
-      </div>
+    <PageContainer title={tontine.name}>
+      <TontineDetailsHeader 
+        tontineName={tontine.name}
+        tontineStatus={tontine.status || 'active'}
+        tontineId={tontine.id}
+        onAddMember={openAddMemberDialog}
+      />
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:w-auto md:grid-cols-3">
@@ -625,7 +580,7 @@ const TontineDetails: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 };
 

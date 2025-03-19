@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,7 +56,7 @@ const TontineList: React.FC = () => {
     
     setRefreshing(true);
     try {
-      // Fetch tontines
+      console.log('Fetching tontines with user ID:', user.id);
       const { data: tontinesData, error: tontinesError } = await supabase
         .from('tontines')
         .select('*')
@@ -66,7 +65,8 @@ const TontineList: React.FC = () => {
         
       if (tontinesError) throw tontinesError;
       
-      // For each tontine, fetch member count
+      console.log('Tontines fetched:', tontinesData?.length);
+      
       const tontinesWithMembers = await Promise.all(
         (tontinesData || []).map(async (tontine) => {
           const { count, error: membersError } = await supabase
@@ -76,7 +76,6 @@ const TontineList: React.FC = () => {
             
           if (membersError) throw membersError;
           
-          // Determine tontine status
           const now = new Date();
           const startDate = new Date(tontine.start_date);
           const endDate = tontine.end_date ? new Date(tontine.end_date) : null;
@@ -96,6 +95,7 @@ const TontineList: React.FC = () => {
         })
       );
       
+      console.log('Enhanced tontines with member counts:', tontinesWithMembers.length);
       setTontines(tontinesWithMembers);
     } catch (error: any) {
       console.error('Error fetching tontines:', error);
@@ -114,9 +114,11 @@ const TontineList: React.FC = () => {
     if (user) {
       fetchTontines();
       
-      // Set up realtime subscription with improved channel config
+      const channelName = `tontines-list-changes-${user.id}`;
+      console.log('Setting up realtime subscription on channel:', channelName);
+      
       const channel = supabase
-        .channel('tontines-list-changes')
+        .channel(channelName)
         .on('postgres_changes', 
           { 
             event: '*', 
@@ -124,18 +126,32 @@ const TontineList: React.FC = () => {
             table: 'tontines',
             filter: `created_by=eq.${user.id}`
           }, 
-          () => {
-            // Refresh when changes are detected
+          (payload) => {
+            console.log('Tontine change detected:', payload);
             fetchTontines();
           }
         )
-        .subscribe();
+        .on('postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'members'
+          },
+          (payload) => {
+            console.log('Member change detected:', payload);
+            fetchTontines();
+          }
+        )
+        .subscribe((status) => {
+          console.log(`Realtime subscription status for ${channelName}:`, status);
+        });
       
       return () => {
+        console.log('Cleaning up supabase channel:', channelName);
         supabase.removeChannel(channel);
       };
     }
-  }, [user]);
+  }, [user?.id]);
   
   const handleDelete = async (id: string) => {
     setDeletingId(id);
@@ -147,7 +163,6 @@ const TontineList: React.FC = () => {
       
       if (error) throw error;
       
-      // Remove from UI immediately (will also be updated by subscription)
       setTontines(tontines.filter(tontine => tontine.id !== id));
       
       toast({
