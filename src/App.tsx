@@ -16,6 +16,8 @@ import TontineEdit from "./pages/TontineEdit";
 import Cycles from "./pages/Cycles";
 import Payments from "./pages/Payments";
 import Reports from "./pages/Reports";
+import Profile from "./pages/Profile";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import SideNavigation from "./components/layout/SideNavigation";
 import TontineDetails from "./components/tontines/TontineDetails";
@@ -123,15 +125,24 @@ const App = () => (
             />
             
             <Route 
+              path="/profile" 
+              element={
+                <ProtectedRoute>
+                  <div className="flex w-full">
+                    <SideNavigation />
+                    <Profile />
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
               path="/settings" 
               element={
                 <ProtectedRoute>
                   <div className="flex w-full">
                     <SideNavigation />
-                    <div className="flex-1 p-8">
-                      <h1 className="text-2xl font-bold mb-4">Settings</h1>
-                      <p>Settings page coming soon.</p>
-                    </div>
+                    <Settings />
                   </div>
                 </ProtectedRoute>
               } 

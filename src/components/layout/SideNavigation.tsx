@@ -4,108 +4,109 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { 
-  Home, 
-  Users, 
-  CalendarDays, 
-  CreditCard, 
-  BarChart3, 
-  Settings,
-  LogOut 
+  LayoutDashboard, PieChart, CalendarDays, CreditCard, Users, Settings, LogOut, UserCircle
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useMobile } from '@/hooks/use-mobile';
 
 const SideNavigation: React.FC = () => {
+  const { signOut } = useAuth();
   const location = useLocation();
-  const { signOut, user } = useAuth();
+  const { isMobile, isSidebarOpen, toggleSidebar } = useMobile();
   
-  const isActive = (path: string) => {
+  const isActivePath = (path: string) => {
+    if (path === '/') return location.pathname === path;
     return location.pathname.startsWith(path);
   };
   
-  const navItems = [
+  const navigationItems = [
     {
       name: 'Dashboard',
-      path: '/dashboard',
-      icon: <Home className="h-5 w-5" />,
+      href: '/dashboard',
+      icon: <LayoutDashboard className="h-5 w-5" />,
     },
     {
       name: 'Tontines',
-      path: '/tontines',
+      href: '/tontines',
       icon: <Users className="h-5 w-5" />,
     },
     {
       name: 'Cycles',
-      path: '/cycles',
+      href: '/cycles',
       icon: <CalendarDays className="h-5 w-5" />,
     },
     {
       name: 'Payments',
-      path: '/payments',
+      href: '/payments',
       icon: <CreditCard className="h-5 w-5" />,
     },
     {
       name: 'Reports',
-      path: '/reports',
-      icon: <BarChart3 className="h-5 w-5" />,
+      href: '/reports',
+      icon: <PieChart className="h-5 w-5" />,
+    },
+    {
+      name: 'Profile',
+      href: '/profile',
+      icon: <UserCircle className="h-5 w-5" />,
     },
     {
       name: 'Settings',
-      path: '/settings',
+      href: '/settings',
       icon: <Settings className="h-5 w-5" />,
     },
   ];
   
+  if (!isSidebarOpen && isMobile) return null;
+  
   return (
-    <div className="h-screen w-64 border-r border-border bg-background flex flex-col">
-      <div className="p-4 border-b border-border flex items-center">
-        <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold">
-          T
-        </div>
-        <span className="ml-2 font-semibold text-lg">TontineTamer</span>
-      </div>
-      
-      <div className="flex-1 p-4 overflow-auto">
-        <div className="space-y-1">
-          {navItems.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
-                isActive(item.path)
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:bg-secondary/50 hover:text-secondary-foreground"
-              )}
-            >
-              {item.icon}
-              {item.name}
+    <div className={cn(
+      "h-screen flex-shrink-0 border-r bg-background",
+      isMobile ? "fixed z-50 w-64" : "w-64"
+    )}>
+      <ScrollArea className="h-full py-6">
+        <div className="flex flex-col h-full px-3 py-2">
+          <div className="mb-10 px-4">
+            <Link to="/dashboard" className="flex items-center gap-2">
+              <div className="font-bold text-xl">
+                Tontine<span className="text-primary">Tamer</span>
+              </div>
             </Link>
-          ))}
-        </div>
-      </div>
-      
-      <div className="p-4 border-t border-border">
-        {user && (
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold">
-                {user.email?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <p className="truncate text-sm font-medium">{user.email}</p>
-              </div>
-            </div>
+          </div>
+          
+          <div className="space-y-1">
+            {navigationItems.map((item) => (
+              <Button
+                key={item.href}
+                variant={isActivePath(item.href) ? "secondary" : "ghost"}
+                className={cn(
+                  "w-full justify-start",
+                  isActivePath(item.href) ? "bg-secondary" : ""
+                )}
+                asChild
+              >
+                <Link to={item.href} onClick={isMobile ? toggleSidebar : undefined}>
+                  {item.icon}
+                  <span className="ml-3">{item.name}</span>
+                </Link>
+              </Button>
+            ))}
+            
             <Button 
-              variant="outline" 
-              className="w-full justify-start" 
-              onClick={() => signOut()}
+              variant="ghost" 
+              className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 mt-6"
+              onClick={() => {
+                signOut();
+                if (isMobile) toggleSidebar();
+              }}
             >
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
+              <LogOut className="h-5 w-5" />
+              <span className="ml-3">Sign Out</span>
             </Button>
           </div>
-        )}
-      </div>
+        </div>
+      </ScrollArea>
     </div>
   );
 };
