@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { CSSProperties } from 'react';
 import { 
   BarChart as RechartsBarChart, 
   LineChart as RechartsLineChart,
@@ -48,12 +48,13 @@ export const BarChart: React.FC<BarChartProps> = ({
     return acc;
   }, {} as Record<string, { color: string }>);
 
-  // Create a custom tooltip component to type safely
-  const CustomTooltip = (props: TooltipProps<any, any>) => {
-    if (props.active && props.payload) {
+  // Create a component as a function to avoid typing issues
+  const renderCustomTooltip = ({ active, payload, label }: TooltipProps<any, any>) => {
+    if (active && payload && payload.length) {
       return (
         <ChartTooltipContent
-          {...props}
+          payload={payload}
+          label={label}
           formatter={(value) => valueFormatter(Number(value))}
         />
       );
@@ -68,7 +69,7 @@ export const BarChart: React.FC<BarChartProps> = ({
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey={index} />
           <YAxis tickFormatter={valueFormatter} />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={renderCustomTooltip} />
           {showLegend && <Legend content={<ChartLegendContent />} />}
           {categories.map((category, i) => (
             <Bar 
@@ -114,12 +115,13 @@ export const LineChart: React.FC<LineChartProps> = ({
     return acc;
   }, {} as Record<string, { color: string }>);
 
-  // Create a custom tooltip component to type safely
-  const CustomTooltip = (props: TooltipProps<any, any>) => {
-    if (props.active && props.payload) {
+  // Create a component as a function to avoid typing issues
+  const renderCustomTooltip = ({ active, payload, label }: TooltipProps<any, any>) => {
+    if (active && payload && payload.length) {
       return (
         <ChartTooltipContent
-          {...props}
+          payload={payload}
+          label={label}
           formatter={(value) => valueFormatter(Number(value))}
         />
       );
@@ -134,7 +136,7 @@ export const LineChart: React.FC<LineChartProps> = ({
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey={index} />
           <YAxis tickFormatter={valueFormatter} />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={renderCustomTooltip} />
           {showLegend && <Legend content={<ChartLegendContent />} />}
           {categories.map((category, i) => (
             <Line 
@@ -177,12 +179,12 @@ export const PieChart: React.FC<PieChartProps> = ({
     return acc;
   }, {} as Record<string, { color: string }>);
 
-  // Create a custom tooltip component to type safely
-  const CustomTooltip = (props: TooltipProps<any, any>) => {
-    if (props.active && props.payload) {
+  // Create a component as a function to avoid typing issues
+  const renderCustomTooltip = ({ active, payload }: TooltipProps<any, any>) => {
+    if (active && payload && payload.length) {
       return (
         <ChartTooltipContent
-          {...props}
+          payload={payload}
           formatter={(value) => valueFormatter(Number(value))}
         />
       );
@@ -209,7 +211,7 @@ export const PieChart: React.FC<PieChartProps> = ({
               <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
             ))}
           </Pie>
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={renderCustomTooltip} />
           {showLegend && <Legend content={<ChartLegendContent />} />}
         </RechartsPieChart>
       </ResponsiveContainer>

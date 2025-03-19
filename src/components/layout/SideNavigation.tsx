@@ -10,7 +10,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsMobile } from '@/hooks/use-mobile';
 
-const SideNavigation: React.FC = () => {
+interface SideNavigationProps {
+  mobile?: boolean;
+  onNavigate?: () => void;
+}
+
+const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) => {
   const { signOut } = useAuth();
   const location = useLocation();
   const isMobile = useIsMobile();
@@ -70,7 +75,7 @@ const SideNavigation: React.FC = () => {
   return (
     <div className={cn(
       "h-screen flex-shrink-0 border-r bg-background",
-      isMobile ? "fixed z-50 w-64" : "w-64"
+      mobile ? "fixed z-50 w-64" : "w-64"
     )}>
       <ScrollArea className="h-full py-6">
         <div className="flex flex-col h-full px-3 py-2">
@@ -93,7 +98,7 @@ const SideNavigation: React.FC = () => {
                 )}
                 asChild
               >
-                <Link to={item.href} onClick={isMobile ? toggleSidebar : undefined}>
+                <Link to={item.href} onClick={mobile ? onNavigate : undefined}>
                   {item.icon}
                   <span className="ml-3">{item.name}</span>
                 </Link>
@@ -105,7 +110,7 @@ const SideNavigation: React.FC = () => {
               className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 mt-6"
               onClick={() => {
                 signOut();
-                if (isMobile) toggleSidebar();
+                if (mobile) onNavigate?.();
               }}
             >
               <LogOut className="h-5 w-5" />
