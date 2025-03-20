@@ -153,11 +153,11 @@ const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false
     : [];
   
   // Custom renderer to highlight dates with events
-  const renderDayContent = (props: DayContentProps) => {
-    const dayDate = props.date; // Correctly access the date property
+  const renderDayContent = (day: DayContentProps) => {
+    const dayDate = day.date; // Correctly access the date property
     
     // Make sure dayDate is a valid date
-    if (!dayDate) return <div>{props.children}</div>;
+    if (!dayDate) return <>{day.displayText}</>;
     
     const dayEvents = calendarEvents.filter(event => isSameDay(event.date, dayDate));
     
@@ -166,7 +166,7 @@ const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false
     
     return (
       <div className="relative w-full h-full flex items-center justify-center">
-        {props.children}
+        {day.displayText}
         <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-1 pb-1">
           {hasPayoutEvent && (
             <div className="h-1 w-1 rounded-full bg-green-500"></div>
