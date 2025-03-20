@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Card, 
   CardContent, 
@@ -10,86 +10,150 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
+import { format, isSameDay } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Link } from 'react-router-dom';
-import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
+import { ExternalLink, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface PaymentsCalendarProps {
   showPreview?: boolean;
 }
 
-// Mock data for calendar events
-const CALENDAR_EVENTS = [
-  {
-    date: new Date(2023, 4, 15),
-    type: 'payout',
-    tontineName: 'Family Savings',
-    recipientName: 'Jane Smith',
-    amount: 2000,
-  },
-  {
-    date: new Date(2023, 4, 10),
-    type: 'dueDate',
-    tontineName: 'Family Savings',
-    description: 'Payment due for Cycle #2',
-    amount: 250,
-  },
-  {
-    date: new Date(2023, 4, 22),
-    type: 'payout',
-    tontineName: 'Friends Group',
-    recipientName: 'Alex Johnson',
-    amount: 800,
-  },
-  {
-    date: new Date(2023, 4, 20),
-    type: 'dueDate',
-    tontineName: 'Friends Group',
-    description: 'Payment due for Cycle #3',
-    amount: 100,
-  },
-  {
-    date: new Date(2023, 4, 28),
-    type: 'payout',
-    tontineName: 'Work Colleagues',
-    recipientName: 'Michael Brown',
-    amount: 1200,
-  },
-  {
-    date: new Date(2023, 4, 25),
-    type: 'dueDate',
-    tontineName: 'Work Colleagues',
-    description: 'Payment due for Cycle #1',
-    amount: 150,
-  },
-];
+interface CalendarEvent {
+  date: Date;
+  type: 'payout' | 'dueDate';
+  tontineName: string;
+  description?: string;
+  recipientName?: string;
+  amount: number;
+  cycle_id?: string;
+}
 
 const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false }) => {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [isOpen, setIsOpen] = useState(true);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+  
+  useEffect(() => {
+    const fetchCalendarEvents = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch cycles to get due dates and recipients
+        const { data: cyclesData, error: cyclesError } = await supabase
+          .from('cycles')
+          .select(`
+            id,
+            cycle_number,
+            start_date,
+            end_date,
+            recipient_id,
+            tontine_id,
+            tontines(name, amount)
+          `);
+        
+        if (cyclesError) throw cyclesError;
+        
+        // Fetch member information for recipients
+        const recipientIds = cyclesData
+          .map(cycle => cycle.recipient_id)
+          .filter(Boolean);
+          
+        const { data: membersData, error: membersError } = await supabase
+          .from('members')
+          .select('id, name')
+          .in('id', recipientIds);
+          
+        if (membersError) throw membersError;
+        
+        // Transform cycles data to calendar events
+        const events: CalendarEvent[] = [];
+        
+        // Add due dates (start dates of cycles)
+        cyclesData.forEach(cycle => {
+          // Check if cycle has a valid start date
+          if (cycle.start_date) {
+            const startDate = new Date(cycle.start_date);
+            
+            // Add cycle start date as due date
+            events.push({
+              date: startDate,
+              type: 'dueDate',
+              tontineName: cycle.tontines?.name || 'Unknown Tontine',
+              description: `Payment due for Cycle #${cycle.cycle_number}`,
+              amount: cycle.tontines?.amount || 0,
+              cycle_id: cycle.id
+            });
+            
+            // If there's a recipient, add a payout event
+            if (cycle.recipient_id) {
+              const recipient = membersData.find(m => m.id === cycle.recipient_id);
+              
+              events.push({
+                date: startDate, // Using same date for now, can be adjusted as needed
+                type: 'payout',
+                tontineName: cycle.tontines?.name || 'Unknown Tontine',
+                recipientName: recipient?.name || 'Unknown Recipient',
+                amount: cycle.tontines?.amount || 0,
+                cycle_id: cycle.id
+              });
+            }
+          }
+        });
+        
+        setCalendarEvents(events);
+      } catch (error: any) {
+        console.error('Error fetching calendar events:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load calendar events.',
+          variant: 'destructive',
+        });
+        setCalendarEvents([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchCalendarEvents();
+    
+    // Set up real-time subscription for cycles changes
+    const channel = supabase
+      .channel('calendar-events-changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'cycles' 
+        }, 
+        () => {
+          fetchCalendarEvents();
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [toast]);
   
   // Filter events for the selected date
   const selectedDateEvents = date 
-    ? CALENDAR_EVENTS.filter(event => 
-        event.date.getDate() === date.getDate() && 
-        event.date.getMonth() === date.getMonth() && 
-        event.date.getFullYear() === date.getFullYear()
-      )
+    ? calendarEvents.filter(event => isSameDay(event.date, date))
     : [];
   
   // Custom renderer to highlight dates with events
   const renderDayContent = (day: Date) => {
-    const dayEvents = CALENDAR_EVENTS.filter(event => 
-      event.date.getDate() === day.getDate() && 
-      event.date.getMonth() === day.getMonth() && 
-      event.date.getFullYear() === day.getFullYear()
-    );
+    const dayEvents = calendarEvents.filter(event => isSameDay(event.date, day));
     
     const hasPayoutEvent = dayEvents.some(event => event.type === 'payout');
     const hasDueDateEvent = dayEvents.some(event => event.type === 'dueDate');
@@ -109,6 +173,16 @@ const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false
     );
   };
   
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </CardContent>
+      </Card>
+    );
+  }
+  
   return (
     <Card>
       <CardHeader>
@@ -124,6 +198,9 @@ const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false
             selected={date}
             onSelect={setDate}
             className="border rounded-md p-3 pointer-events-auto"
+            components={{
+              DayContent: renderDayContent
+            }}
           />
         </div>
         
@@ -162,6 +239,15 @@ const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false
                         ${event.amount}
                       </Badge>
                     </div>
+                    {event.cycle_id && (
+                      <div className="mt-2">
+                        <Button variant="outline" size="sm" asChild className="w-full">
+                          <Link to={`/cycles/${event.cycle_id}`}>
+                            View Details
+                          </Link>
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

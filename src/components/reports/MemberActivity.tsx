@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Card, 
   CardContent, 
@@ -18,94 +18,118 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Check, X, Clock, ExternalLink } from 'lucide-react';
+import { Check, X, Clock, ExternalLink, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
-// Mock data for member activity
-const MEMBER_ACTIVITY_DATA = [
-  { 
-    id: '1',
-    name: 'John Doe',
-    tontineName: 'Family Savings',
-    actionType: 'payment',
-    amount: 250,
-    date: '2023-05-02T14:30:00',
-    status: 'completed',
-  },
-  { 
-    id: '2',
-    name: 'Jane Smith',
-    tontineName: 'Friends Group',
-    actionType: 'payment',
-    amount: 100,
-    date: '2023-05-03T10:15:00',
-    status: 'completed',
-  },
-  { 
-    id: '3',
-    name: 'Alex Johnson',
-    tontineName: 'Work Colleagues',
-    actionType: 'payout',
-    amount: 1200,
-    date: '2023-05-01T16:45:00',
-    status: 'completed',
-  },
-  { 
-    id: '4',
-    name: 'Sarah Williams',
-    tontineName: 'Family Savings',
-    actionType: 'payment',
-    amount: 250,
-    date: '2023-05-04T09:20:00',
-    status: 'pending',
-  },
-  { 
-    id: '5',
-    name: 'Michael Brown',
-    tontineName: 'Friends Group',
-    actionType: 'payment',
-    amount: 100,
-    date: '2023-05-04T11:05:00',
-    status: 'overdue',
-  },
-  { 
-    id: '6',
-    name: 'Emily Davis',
-    tontineName: 'Work Colleagues',
-    actionType: 'payment',
-    amount: 50,
-    date: '2023-05-03T13:40:00',
-    status: 'completed',
-  },
-  { 
-    id: '7',
-    name: 'David Wilson',
-    tontineName: 'Family Savings',
-    actionType: 'payment',
-    amount: 250,
-    date: '2023-05-05T08:50:00',
-    status: 'completed',
-  },
-  { 
-    id: '8',
-    name: 'Lisa Miller',
-    tontineName: 'Friends Group',
-    actionType: 'payout',
-    amount: 800,
-    date: '2023-04-30T15:25:00',
-    status: 'completed',
-  },
-];
+interface ActivityItem {
+  id: string;
+  name: string;
+  tontineName: string;
+  actionType: 'payment' | 'payout';
+  amount: number;
+  date: string;
+  status: 'completed' | 'pending' | 'overdue';
+}
 
 interface MemberActivityProps {
   showPreview?: boolean;
 }
 
 const MemberActivity: React.FC<MemberActivityProps> = ({ showPreview = false }) => {
-  const activityData = showPreview 
-    ? MEMBER_ACTIVITY_DATA.slice(0, 5) 
-    : MEMBER_ACTIVITY_DATA;
+  const [activityData, setActivityData] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+  
+  useEffect(() => {
+    const fetchActivityData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch payments data from Supabase
+        const { data: paymentsData, error: paymentsError } = await supabase
+          .from('payments')
+          .select(`
+            id,
+            amount,
+            payment_date,
+            status,
+            payment_method,
+            notes,
+            created_at,
+            member_id,
+            cycle_id,
+            members(name),
+            cycles(tontine_id, cycle_number)
+          `)
+          .order('created_at', { ascending: false })
+          .limit(showPreview ? 5 : 20);
+          
+        if (paymentsError) throw paymentsError;
+        
+        // Get tontine names for the payments
+        const tontineIds = [...new Set(paymentsData.map(p => p.cycles?.tontine_id).filter(Boolean))];
+        
+        const { data: tontinesData, error: tontinesError } = await supabase
+          .from('tontines')
+          .select('id, name')
+          .in('id', tontineIds);
+          
+        if (tontinesError) throw tontinesError;
+        
+        // Transform the data to match our ActivityItem interface
+        const mappedData: ActivityItem[] = paymentsData.map(payment => {
+          const tontine = tontinesData.find(t => t.id === payment.cycles?.tontine_id);
+          
+          return {
+            id: payment.id,
+            name: payment.members?.name || 'Unknown Member',
+            tontineName: tontine?.name || 'Unknown Tontine',
+            actionType: 'payment',
+            amount: payment.amount,
+            date: payment.created_at,
+            status: payment.status === 'paid' ? 'completed' : 
+                   payment.status === 'pending' ? 'pending' : 'overdue',
+          };
+        });
+        
+        setActivityData(mappedData);
+      } catch (error: any) {
+        console.error('Error fetching activity data:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load member activity data.',
+          variant: 'destructive',
+        });
+        setActivityData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchActivityData();
+    
+    // Set up real-time subscription for payments changes
+    const channel = supabase
+      .channel('member-activity-changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'payments' 
+        }, 
+        () => {
+          fetchActivityData();
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [showPreview, toast]);
   
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -133,6 +157,16 @@ const MemberActivity: React.FC<MemberActivityProps> = ({ showPreview = false }) 
     }
   };
   
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </CardContent>
+      </Card>
+    );
+  }
+  
   return (
     <Card>
       <CardHeader>
@@ -142,53 +176,59 @@ const MemberActivity: React.FC<MemberActivityProps> = ({ showPreview = false }) 
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead>Activity</TableHead>
-              <TableHead className="hidden md:table-cell">Date</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {activityData.map((activity) => (
-              <TableRow key={activity.id}>
-                <TableCell>
-                  <div>
-                    <div className="font-medium">{activity.name}</div>
-                    <div className="text-sm text-muted-foreground">{activity.tontineName}</div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div>
-                    <div className="font-medium capitalize">
-                      {activity.actionType}
-                    </div>
-                    <div className="text-sm">${activity.amount}</div>
-                  </div>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  {format(new Date(activity.date), 'MMM d, yyyy')}
-                  <div className="text-sm text-muted-foreground">
-                    {format(new Date(activity.date), 'h:mm a')}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    {getStatusIcon(activity.status)}
-                    <span className="hidden md:inline">
-                      {getStatusBadge(activity.status)}
-                    </span>
-                    <span className="md:hidden capitalize text-sm">
-                      {activity.status}
-                    </span>
-                  </div>
-                </TableCell>
+        {activityData.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Member</TableHead>
+                <TableHead>Activity</TableHead>
+                <TableHead className="hidden md:table-cell">Date</TableHead>
+                <TableHead>Status</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {activityData.map((activity) => (
+                <TableRow key={activity.id}>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">{activity.name}</div>
+                      <div className="text-sm text-muted-foreground">{activity.tontineName}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium capitalize">
+                        {activity.actionType}
+                      </div>
+                      <div className="text-sm">${activity.amount}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {format(new Date(activity.date), 'MMM d, yyyy')}
+                    <div className="text-sm text-muted-foreground">
+                      {format(new Date(activity.date), 'h:mm a')}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {getStatusIcon(activity.status)}
+                      <span className="hidden md:inline">
+                        {getStatusBadge(activity.status)}
+                      </span>
+                      <span className="md:hidden capitalize text-sm">
+                        {activity.status}
+                      </span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="py-8 text-center text-muted-foreground">
+            No activity data available
+          </div>
+        )}
       </CardContent>
       {showPreview && (
         <CardFooter>

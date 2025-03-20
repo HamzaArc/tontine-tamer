@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
@@ -35,6 +35,12 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/signup" element={<SignUp />} />
+            
+            {/* Redirect common misspellings or mistake paths */}
+            <Route path="/login" element={<Navigate to="/signin" replace />} />
+            <Route path="/register" element={<Navigate to="/signup" replace />} />
+            <Route path="/sign-in" element={<Navigate to="/signin" replace />} />
+            <Route path="/sign-up" element={<Navigate to="/signup" replace />} />
             
             {/* Protected Routes */}
             {/* App Layout with Sidebar */}
@@ -95,6 +101,36 @@ const App = () => (
                   <div className="flex w-full">
                     <SideNavigation />
                     <Cycles />
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/cycles/:id" 
+              element={
+                <ProtectedRoute>
+                  <div className="flex w-full">
+                    <SideNavigation />
+                    <div className="flex-1" data-tour="cycle-details">
+                      {/* Cycle detail component should be added here */}
+                      <Navigate to="/cycles" replace />
+                    </div>
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/cycles/:id/edit" 
+              element={
+                <ProtectedRoute>
+                  <div className="flex w-full">
+                    <SideNavigation />
+                    <div className="flex-1">
+                      {/* Cycle edit component should be added here */}
+                      <Navigate to="/cycles" replace />
+                    </div>
                   </div>
                 </ProtectedRoute>
               } 

@@ -1,6 +1,9 @@
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from './Header';
+import { OnboardingTour } from '@/components/onboarding/OnboardingTour';
+import BreadcrumbNavigation from './BreadcrumbNavigation';
 
 interface PageContainerProps {
   title: string;
@@ -8,19 +11,20 @@ interface PageContainerProps {
 }
 
 const PageContainer: React.FC<PageContainerProps> = ({ title, children }) => {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
+  const navigate = useNavigate();
 
   return (
-    <div className="flex-1 flex flex-col h-screen">
+    <div className="flex flex-col w-full min-h-screen">
       <Header title={title} />
-      <main className={`flex-1 p-6 overflow-auto transition-opacity duration-300 ${mounted ? 'opacity-100' : 'opacity-0'}`}>
-        {children}
+      <main className="flex-1 container mx-auto px-4 py-4">
+        <BreadcrumbNavigation />
+        <div className="space-y-4">
+          {children}
+        </div>
       </main>
+      <div className="fixed bottom-4 right-4">
+        <OnboardingTour />
+      </div>
     </div>
   );
 };

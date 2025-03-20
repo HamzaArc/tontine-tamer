@@ -19,21 +19,28 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 type TourStep = {
   title: string;
   description: string;
   route: string;
   element?: string;
+  selector?: string;
+  spotlightContent?: React.ReactNode;
 };
 
 export const OnboardingTour = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [isTourActive, setIsTourActive] = useState(false);
+  const [completedTour, setCompletedTour] = useState(false);
+  const [highlightedElement, setHighlightedElement] = useState<HTMLElement | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const tourSteps: TourStep[] = [
     {
@@ -45,44 +52,139 @@ export const OnboardingTour = () => {
       title: 'Dashboard Overview',
       description: 'The dashboard gives you a quick overview of your tontines, upcoming payments, and recent activity.',
       route: '/dashboard',
+      selector: '.dashboard-summary',
     },
     {
       title: 'Create a Tontine',
       description: 'Start by creating a tontine. Click on "Create Tontine" to set up a new savings group.',
       route: '/tontines',
+      selector: '[data-tour="create-tontine-button"]',
     },
     {
-      title: 'Add Members',
-      description: 'Add members to your tontine. They\'ll receive an invitation to join the platform.',
+      title: 'Manage Tontines',
+      description: 'View and manage all your tontines from this page. You can add members and create payment cycles.',
       route: '/tontines',
-      element: 'button[contains(., "Add Member")]',
+      selector: '.tontine-list',
     },
     {
-      title: 'Create Cycles',
+      title: 'Payment Cycles',
       description: 'Set up payment cycles for your tontine and assign recipients for each cycle.',
       route: '/cycles',
+      selector: '[data-tour="cycles-list"]',
     },
     {
       title: 'Record Payments',
       description: 'Track payments from tontine members to ensure everyone contributes on time.',
       route: '/payments',
+      selector: '[data-tour="payments-list"]',
     },
     {
       title: 'View Reports',
       description: 'Generate reports to analyze your tontine\'s performance and member activity.',
       route: '/reports',
+      selector: '[data-tour="reports-dashboard"]',
     },
   ];
 
+  // Check if user has completed the tour before
+  useEffect(() => {
+    const checkTourCompletion = async () => {
+      if (!user) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('completed_tour')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+        
+        if (data) {
+          setCompletedTour(!!data.completed_tour);
+        }
+      } catch (error) {
+        console.error('Error checking tour completion:', error);
+      }
+    };
+
+    checkTourCompletion();
+  }, [user]);
+
+  // Display prompt for new users
+  useEffect(() => {
+    if (user && !completedTour && location.pathname === '/dashboard') {
+      // Wait a moment before showing the tour dialog
+      const timer = setTimeout(() => {
+        setIsOpen(true);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [user, completedTour, location.pathname]);
+
+  // Handle highlighting of elements
   useEffect(() => {
     if (isTourActive && currentStep < tourSteps.length) {
       // Navigate to the route for the current step
       const targetRoute = tourSteps[currentStep].route;
+      
       if (location.pathname !== targetRoute) {
         navigate(targetRoute);
+        return; // Wait for location to update before trying to highlight
+      }
+      
+      // Find and highlight the element
+      const selector = tourSteps[currentStep].selector;
+      if (selector) {
+        // Give the DOM time to update after navigation
+        const timer = setTimeout(() => {
+          const element = document.querySelector(selector) as HTMLElement;
+          if (element) {
+            setHighlightedElement(element);
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Add a highlight class
+            element.classList.add('tour-highlight');
+            
+            // Position the tooltip near the element
+            const rect = element.getBoundingClientRect();
+            const tourTooltip = document.querySelector('.tour-tooltip') as HTMLElement;
+            if (tourTooltip) {
+              // Adjust position based on viewport
+              if (rect.top < window.innerHeight / 2) {
+                tourTooltip.style.top = `${rect.bottom + window.scrollY + 20}px`;
+              } else {
+                tourTooltip.style.top = `${rect.top + window.scrollY - tourTooltip.offsetHeight - 20}px`;
+              }
+              
+              tourTooltip.style.left = `${Math.max(20, rect.left + rect.width / 2 - tourTooltip.offsetWidth / 2)}px`;
+            }
+          }
+        }, 500);
+        
+        return () => {
+          clearTimeout(timer);
+          if (highlightedElement) {
+            highlightedElement.classList.remove('tour-highlight');
+          }
+        };
       }
     }
-  }, [currentStep, isTourActive, location.pathname, navigate]);
+  }, [currentStep, isTourActive, location.pathname, navigate, tourSteps]);
+
+  const markTourAsCompleted = async () => {
+    if (!user) return;
+    
+    try {
+      await supabase
+        .from('profiles')
+        .update({ completed_tour: true })
+        .eq('id', user.id);
+    } catch (error) {
+      console.error('Error updating tour completion status:', error);
+    }
+  };
 
   const startTour = () => {
     setCurrentStep(0);
@@ -95,19 +197,56 @@ export const OnboardingTour = () => {
     });
     
     navigate(tourSteps[0].route);
+    
+    // Add CSS for highlighting elements during tour
+    const style = document.createElement('style');
+    style.id = 'tour-styles';
+    style.innerHTML = `
+      .tour-highlight {
+        position: relative;
+        z-index: 100;
+        box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.5), 0 0 0 8px rgba(99, 102, 241, 0.3) !important;
+        border-radius: 4px;
+        transition: box-shadow 0.3s ease;
+      }
+      .tour-tooltip {
+        z-index: 9999;
+      }
+    `;
+    document.head.appendChild(style);
   };
 
-  const endTour = () => {
+  const endTour = async () => {
     setIsTourActive(false);
+    
+    // Remove any highlighting
+    if (highlightedElement) {
+      highlightedElement.classList.remove('tour-highlight');
+    }
+    
+    // Remove tour styles
+    const tourStyles = document.getElementById('tour-styles');
+    if (tourStyles) {
+      tourStyles.remove();
+    }
     
     toast({
       title: 'Tour Ended',
       description: 'You can restart the tour anytime from the help icon.',
     });
+    
+    // Mark tour as completed
+    setCompletedTour(true);
+    await markTourAsCompleted();
   };
 
   const nextStep = () => {
     if (currentStep < tourSteps.length - 1) {
+      // Remove highlight from current element
+      if (highlightedElement) {
+        highlightedElement.classList.remove('tour-highlight');
+      }
+      
       setCurrentStep(currentStep + 1);
     } else {
       endTour();
@@ -116,6 +255,11 @@ export const OnboardingTour = () => {
 
   const prevStep = () => {
     if (currentStep > 0) {
+      // Remove highlight from current element
+      if (highlightedElement) {
+        highlightedElement.classList.remove('tour-highlight');
+      }
+      
       setCurrentStep(currentStep - 1);
     }
   };
@@ -164,7 +308,10 @@ export const OnboardingTour = () => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsOpen(false)}>
+            <Button variant="outline" onClick={() => {
+              setIsOpen(false);
+              markTourAsCompleted();
+            }}>
               Skip Tour
             </Button>
             <Button onClick={startTour}>
@@ -175,7 +322,10 @@ export const OnboardingTour = () => {
       </Dialog>
 
       {isTourActive && (
-        <div className="fixed bottom-4 right-4 z-50 bg-white rounded-lg shadow-lg p-4 w-96 border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+        <div 
+          className="fixed bottom-4 right-4 z-50 bg-white rounded-lg shadow-lg p-4 w-96 border border-gray-200 dark:bg-gray-800 dark:border-gray-700 tour-tooltip"
+          style={{ maxWidth: '90vw' }}
+        >
           <div className="flex justify-between items-center mb-2">
             <h3 className="font-bold text-lg">
               Step {currentStep + 1} of {tourSteps.length}
