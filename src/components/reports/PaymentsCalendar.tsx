@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/collapsible";
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { DayContentProps } from 'react-day-picker';
 
 interface PaymentsCalendarProps {
   showPreview?: boolean;
@@ -152,7 +153,12 @@ const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false
     : [];
   
   // Custom renderer to highlight dates with events
-  const renderDayContent = (day: Date) => {
+  const renderDayContent = (props: DayContentProps) => {
+    const { date: day } = props;
+    
+    // Make sure day is a valid date
+    if (!day) return <div>{props.day}</div>;
+    
     const dayEvents = calendarEvents.filter(event => isSameDay(event.date, day));
     
     const hasPayoutEvent = dayEvents.some(event => event.type === 'payout');

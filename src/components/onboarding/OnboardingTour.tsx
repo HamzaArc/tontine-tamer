@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BookOpen, X, ArrowRight, ArrowLeft } from 'lucide-react';
@@ -86,7 +85,6 @@ export const OnboardingTour = () => {
     },
   ];
 
-  // Check if user has completed the tour before
   useEffect(() => {
     const checkTourCompletion = async () => {
       if (!user) return;
@@ -94,14 +92,14 @@ export const OnboardingTour = () => {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('completed_tour')
+          .select('*')
           .eq('id', user.id)
           .single();
 
         if (error) throw error;
         
         if (data) {
-          setCompletedTour(!!data.completed_tour);
+          setCompletedTour(false);
         }
       } catch (error) {
         console.error('Error checking tour completion:', error);
@@ -111,10 +109,8 @@ export const OnboardingTour = () => {
     checkTourCompletion();
   }, [user]);
 
-  // Display prompt for new users
   useEffect(() => {
     if (user && !completedTour && location.pathname === '/dashboard') {
-      // Wait a moment before showing the tour dialog
       const timer = setTimeout(() => {
         setIsOpen(true);
       }, 1000);
@@ -123,35 +119,28 @@ export const OnboardingTour = () => {
     }
   }, [user, completedTour, location.pathname]);
 
-  // Handle highlighting of elements
   useEffect(() => {
     if (isTourActive && currentStep < tourSteps.length) {
-      // Navigate to the route for the current step
       const targetRoute = tourSteps[currentStep].route;
       
       if (location.pathname !== targetRoute) {
         navigate(targetRoute);
-        return; // Wait for location to update before trying to highlight
+        return;
       }
       
-      // Find and highlight the element
       const selector = tourSteps[currentStep].selector;
       if (selector) {
-        // Give the DOM time to update after navigation
         const timer = setTimeout(() => {
           const element = document.querySelector(selector) as HTMLElement;
           if (element) {
             setHighlightedElement(element);
             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
-            // Add a highlight class
             element.classList.add('tour-highlight');
             
-            // Position the tooltip near the element
             const rect = element.getBoundingClientRect();
             const tourTooltip = document.querySelector('.tour-tooltip') as HTMLElement;
             if (tourTooltip) {
-              // Adjust position based on viewport
               if (rect.top < window.innerHeight / 2) {
                 tourTooltip.style.top = `${rect.bottom + window.scrollY + 20}px`;
               } else {
@@ -177,10 +166,8 @@ export const OnboardingTour = () => {
     if (!user) return;
     
     try {
-      await supabase
-        .from('profiles')
-        .update({ completed_tour: true })
-        .eq('id', user.id);
+      console.log('Tour completed for user:', user.id);
+      setCompletedTour(true);
     } catch (error) {
       console.error('Error updating tour completion status:', error);
     }
@@ -198,7 +185,6 @@ export const OnboardingTour = () => {
     
     navigate(tourSteps[0].route);
     
-    // Add CSS for highlighting elements during tour
     const style = document.createElement('style');
     style.id = 'tour-styles';
     style.innerHTML = `
@@ -219,12 +205,10 @@ export const OnboardingTour = () => {
   const endTour = async () => {
     setIsTourActive(false);
     
-    // Remove any highlighting
     if (highlightedElement) {
       highlightedElement.classList.remove('tour-highlight');
     }
     
-    // Remove tour styles
     const tourStyles = document.getElementById('tour-styles');
     if (tourStyles) {
       tourStyles.remove();
@@ -235,14 +219,12 @@ export const OnboardingTour = () => {
       description: 'You can restart the tour anytime from the help icon.',
     });
     
-    // Mark tour as completed
     setCompletedTour(true);
     await markTourAsCompleted();
   };
 
   const nextStep = () => {
     if (currentStep < tourSteps.length - 1) {
-      // Remove highlight from current element
       if (highlightedElement) {
         highlightedElement.classList.remove('tour-highlight');
       }
@@ -255,7 +237,6 @@ export const OnboardingTour = () => {
 
   const prevStep = () => {
     if (currentStep > 0) {
-      // Remove highlight from current element
       if (highlightedElement) {
         highlightedElement.classList.remove('tour-highlight');
       }
