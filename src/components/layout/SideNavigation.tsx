@@ -19,13 +19,6 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
   const { signOut } = useAuth();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(!isMobile);
-  
-  React.useEffect(() => {
-    setIsSidebarOpen(!isMobile);
-  }, [isMobile]);
-  
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   
   const isActivePath = (path: string) => {
     if (path === '/') return location.pathname === path;
@@ -70,8 +63,6 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
     },
   ];
   
-  if (!isSidebarOpen && isMobile) return null;
-  
   return (
     <div className={cn(
       "h-screen flex-shrink-0 border-r bg-background",
@@ -80,7 +71,7 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
       <ScrollArea className="h-full py-6">
         <div className="flex flex-col h-full px-3 py-2">
           <div className="mb-10 px-4">
-            <Link to="/dashboard" className="flex items-center gap-2">
+            <Link to="/dashboard" className="flex items-center gap-2" onClick={mobile ? onNavigate : undefined}>
               <div className="font-bold text-xl">
                 Tontine<span className="text-primary">Tamer</span>
               </div>

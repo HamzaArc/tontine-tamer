@@ -6,6 +6,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useState } from "react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Menu } from "lucide-react";
 
 import Index from "./pages/Index";
 import SignIn from "./pages/SignIn";
@@ -23,6 +28,33 @@ import SideNavigation from "./components/layout/SideNavigation";
 import TontineDetails from "./components/tontines/TontineDetails";
 
 const queryClient = new QueryClient();
+
+const AppLayout = ({ children }: { children: React.ReactNode }) => {
+  const isMobile = useIsMobile();
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="flex w-full">
+      {!isMobile && <SideNavigation />}
+      
+      {isMobile && (
+        <Sheet open={isOpen} onOpenChange={setIsOpen}>
+          <SheetTrigger asChild className="fixed top-4 left-4 z-40">
+            <Button variant="outline" size="icon" className="md:hidden">
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Toggle menu</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0">
+            <SideNavigation mobile onNavigate={() => setIsOpen(false)} />
+          </SheetContent>
+        </Sheet>
+      )}
+      
+      <div className="flex-1">{children}</div>
+    </div>
+  );
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -48,10 +80,9 @@ const App = () => (
               path="/dashboard" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <Dashboard />
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -60,10 +91,9 @@ const App = () => (
               path="/tontines" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <Tontines />
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -72,12 +102,11 @@ const App = () => (
               path="/tontines/:id" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <div className="flex-1">
                       <TontineDetails />
                     </div>
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -86,10 +115,9 @@ const App = () => (
               path="/tontines/:id/edit" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <TontineEdit />
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -98,10 +126,9 @@ const App = () => (
               path="/cycles" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <Cycles />
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -110,13 +137,12 @@ const App = () => (
               path="/cycles/:id" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <div className="flex-1" data-tour="cycle-details">
                       {/* Cycle detail component should be added here */}
                       <Navigate to="/cycles" replace />
                     </div>
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -125,13 +151,12 @@ const App = () => (
               path="/cycles/:id/edit" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <div className="flex-1">
                       {/* Cycle edit component should be added here */}
                       <Navigate to="/cycles" replace />
                     </div>
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -140,10 +165,9 @@ const App = () => (
               path="/payments" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <Payments />
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -152,10 +176,9 @@ const App = () => (
               path="/reports" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <Reports />
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -164,10 +187,9 @@ const App = () => (
               path="/profile" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <Profile />
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
@@ -176,10 +198,9 @@ const App = () => (
               path="/settings" 
               element={
                 <ProtectedRoute>
-                  <div className="flex w-full">
-                    <SideNavigation />
+                  <AppLayout>
                     <Settings />
-                  </div>
+                  </AppLayout>
                 </ProtectedRoute>
               } 
             />
