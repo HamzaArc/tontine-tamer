@@ -18,6 +18,9 @@ export const supabase = createClient<Database>(
       autoRefreshToken: true,
       storageKey: 'tontinetamer-auth-token',
       storage: window.localStorage
+    },
+    global: {
+      fetch: (...args) => fetch(...args)
     }
   }
 );

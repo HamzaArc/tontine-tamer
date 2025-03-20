@@ -20,33 +20,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        console.log('Auth state changed:', session ? 'logged in' : 'logged out');
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
+    let mounted = true;
+    
+    async function initializeAuth() {
+      try {
+        // Set up auth state listener FIRST
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+          (_event, session) => {
+            if (!mounted) return;
+            console.log('Auth state changed:', session ? 'logged in' : 'logged out');
+            setSession(session);
+            setUser(session?.user ?? null);
+            setLoading(false);
+          }
+        );
+
+        // THEN check for existing session
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error('Error getting session:', error);
+          throw error;
+        }
+
+        if (mounted) {
+          console.log('Initial session check:', data.session ? 'session found' : 'no session');
+          setSession(data.session);
+          setUser(data.session?.user ?? null);
+          setLoading(false);
+          setInitialized(true);
+        }
+
+        return () => {
+          mounted = false;
+          subscription.unsubscribe();
+        };
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        if (mounted) {
+          setLoading(false);
+          setInitialized(true);
+          toast({
+            title: "Connection Error",
+            description: "Unable to connect to authentication service. Please check your internet connection.",
+            variant: "destructive",
+          });
+        }
       }
-    );
+    }
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('Initial session check:', session ? 'session found' : 'no session');
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    }).catch(error => {
-      console.error('Error getting session:', error);
-      setLoading(false);
-    });
+    initializeAuth();
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+    };
+  }, [toast]);
 
   const signUp = async (email: string, password: string, name: string) => {
     try {
@@ -73,9 +105,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       navigate('/signin');
     } catch (error: any) {
       console.error('Signup error:', error);
+      
+      let errorMessage = error.message || "An error occurred during signup";
+      
+      // Handle network errors
+      if (error.message === "Failed to fetch" || error.code === "NETWORK_ERROR") {
+        errorMessage = "Network error. Please check your internet connection and try again.";
+      }
+      
       toast({
         title: "Error",
-        description: error.message || "An error occurred during signup",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -103,11 +143,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       navigate('/dashboard');
     } catch (error: any) {
       console.error('Login error:', error);
+      
+      let errorMessage = error.message || "Invalid login credentials";
+      
+      // Handle network errors
+      if (error.message === "Failed to fetch" || error.code === "NETWORK_ERROR") {
+        errorMessage = "Network error. Please check your internet connection and try again.";
+      }
+      
       toast({
         title: "Error",
-        description: error.message || "Invalid login credentials",
+        description: errorMessage,
         variant: "destructive",
       });
+      
+      throw error; // Re-throw to handle in the component
     } finally {
       setLoading(false);
     }
@@ -128,9 +178,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       navigate('/');
     } catch (error: any) {
       console.error('Signout error:', error);
+      
+      let errorMessage = error.message || "Error signing out";
+      
+      // Handle network errors
+      if (error.message === "Failed to fetch" || error.code === "NETWORK_ERROR") {
+        errorMessage = "Network error. Please check your internet connection and try again.";
+      }
+      
       toast({
         title: "Error",
-        description: error.message || "Error signing out",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -144,7 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signUp,
     signIn,
     signOut,
-    loading,
+    loading: loading || !initialized,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

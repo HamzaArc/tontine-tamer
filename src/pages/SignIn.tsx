@@ -53,7 +53,14 @@ const SignIn: React.FC = () => {
     try {
       await signIn(data.email, data.password);
     } catch (error: any) {
-      setAuthError(error.message || 'Failed to sign in. Please try again.');
+      let errorMessage = error.message || 'Failed to sign in. Please try again.';
+      
+      // More specific network error handling
+      if (error.message?.includes('fetch') || error.code === "NETWORK_ERROR") {
+        errorMessage = "Network error. Please check your internet connection and try again.";
+      }
+      
+      setAuthError(errorMessage);
     }
   };
 
