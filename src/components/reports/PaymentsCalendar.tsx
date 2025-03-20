@@ -157,7 +157,7 @@ const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false
     const dayDate = props.date; // Correctly access the date property
     
     // Make sure dayDate is a valid date
-    if (!dayDate) return <>{props.day}</>;
+    if (!dayDate) return <>-</>;
     
     const dayEvents = calendarEvents.filter(event => isSameDay(event.date, dayDate));
     
@@ -166,7 +166,7 @@ const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false
     
     return (
       <div className="relative w-full h-full flex items-center justify-center">
-        {props.day}
+        {dayDate.getDate()} {/* Display the day number */}
         <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-1 pb-1">
           {hasPayoutEvent && (
             <div className="h-1 w-1 rounded-full bg-green-500"></div>
