@@ -154,19 +154,19 @@ const PaymentsCalendar: React.FC<PaymentsCalendarProps> = ({ showPreview = false
   
   // Custom renderer to highlight dates with events
   const renderDayContent = (props: DayContentProps) => {
-    const { date: day } = props;
+    const dayDate = props.date; // Correctly access the date property
     
-    // Make sure day is a valid date
-    if (!day) return <div>{props.day}</div>;
+    // Make sure dayDate is a valid date
+    if (!dayDate) return <div>{props.children}</div>;
     
-    const dayEvents = calendarEvents.filter(event => isSameDay(event.date, day));
+    const dayEvents = calendarEvents.filter(event => isSameDay(event.date, dayDate));
     
     const hasPayoutEvent = dayEvents.some(event => event.type === 'payout');
     const hasDueDateEvent = dayEvents.some(event => event.type === 'dueDate');
     
     return (
       <div className="relative w-full h-full flex items-center justify-center">
-        {day.getDate()}
+        {props.children}
         <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-1 pb-1">
           {hasPayoutEvent && (
             <div className="h-1 w-1 rounded-full bg-green-500"></div>
