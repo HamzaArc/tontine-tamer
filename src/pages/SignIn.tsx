@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -26,6 +26,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Icons } from '@/components/ui/icons';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
@@ -36,6 +38,7 @@ type FormData = z.infer<typeof formSchema>;
 
 const SignIn: React.FC = () => {
   const { signIn, loading } = useAuth();
+  const [authError, setAuthError] = useState<string | null>(null);
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -46,7 +49,12 @@ const SignIn: React.FC = () => {
   });
 
   const onSubmit = async (data: FormData) => {
-    await signIn(data.email, data.password);
+    setAuthError(null);
+    try {
+      await signIn(data.email, data.password);
+    } catch (error: any) {
+      setAuthError(error.message || 'Failed to sign in. Please try again.');
+    }
   };
 
   return (
@@ -65,6 +73,12 @@ const SignIn: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {authError && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{authError}</AlertDescription>
+              </Alert>
+            )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
