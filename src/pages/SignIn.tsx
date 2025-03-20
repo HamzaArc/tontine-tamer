@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/contexts/AuthContext';
+import { checkSupabaseConnection } from '@/integrations/supabase/client';
 
 import {
   Card,
@@ -27,7 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Icons } from '@/components/ui/icons';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, WifiOff } from 'lucide-react';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
@@ -39,6 +40,7 @@ type FormData = z.infer<typeof formSchema>;
 const SignIn: React.FC = () => {
   const { signIn, loading } = useAuth();
   const [authError, setAuthError] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -48,6 +50,15 @@ const SignIn: React.FC = () => {
     },
   });
 
+  useEffect(() => {
+    const checkConnection = async () => {
+      const isConnected = await checkSupabaseConnection();
+      setConnectionStatus(isConnected ? 'connected' : 'disconnected');
+    };
+    
+    checkConnection();
+  }, []);
+
   const onSubmit = async (data: FormData) => {
     setAuthError(null);
     try {
@@ -56,8 +67,11 @@ const SignIn: React.FC = () => {
       let errorMessage = error.message || 'Failed to sign in. Please try again.';
       
       // More specific network error handling
-      if (error.message?.includes('fetch') || error.code === "NETWORK_ERROR") {
-        errorMessage = "Network error. Please check your internet connection and try again.";
+      if (error.message?.includes('Network error') || 
+          error.message?.includes('fetch') || 
+          error.code === "NETWORK_ERROR") {
+        errorMessage = "Network error. Unable to connect to authentication service. Please check your internet connection and try again.";
+        setConnectionStatus('disconnected');
       }
       
       setAuthError(errorMessage);
@@ -80,12 +94,22 @@ const SignIn: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {connectionStatus === 'disconnected' && (
+              <Alert variant="destructive" className="mb-4">
+                <WifiOff className="h-4 w-4 mr-2" />
+                <AlertDescription>
+                  Connection to authentication service unavailable. Please check your internet connection and refresh the page.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             {authError && (
               <Alert variant="destructive" className="mb-4">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{authError}</AlertDescription>
               </Alert>
             )}
+            
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
@@ -114,12 +138,19 @@ const SignIn: React.FC = () => {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button type="submit" className="w-full" disabled={loading || connectionStatus === 'disconnected'}>
                   {loading ? (
                     <>
                       <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
                       Signing in...
                     </>
+                  ) : connectionStatus === 'checking' ? (
+                    <>
+                      <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
+                      Checking connection...
+                    </>
+                  ) : connectionStatus === 'disconnected' ? (
+                    'Connection Unavailable'
                   ) : (
                     'Sign In'
                   )}

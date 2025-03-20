@@ -20,7 +20,25 @@ export const supabase = createClient<Database>(
       storage: window.localStorage
     },
     global: {
-      fetch: (url, options) => fetch(url, options)
+      fetch: (url, options) => {
+        console.log(`Supabase API request to: ${url}`);
+        return fetch(url, options)
+          .catch(error => {
+            console.error('Supabase network error:', error);
+            throw new Error('Network error. Unable to connect to authentication service. Please check your internet connection.');
+          });
+      }
     }
   }
 );
+
+// Helper function to check Supabase connection
+export const checkSupabaseConnection = async (): Promise<boolean> => {
+  try {
+    const { error } = await supabase.auth.getSession();
+    return !error;
+  } catch (error) {
+    console.error('Failed to connect to Supabase:', error);
+    return false;
+  }
+};

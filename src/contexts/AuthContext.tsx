@@ -12,6 +12,7 @@ type AuthContextType = {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   loading: boolean;
+  connectionError: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
+  const [connectionError, setConnectionError] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -29,6 +31,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     async function initializeAuth() {
       try {
+        setConnectionError(false);
+        
         // Set up auth state listener FIRST
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
           (_event, session) => {
@@ -44,6 +48,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase.auth.getSession();
         if (error) {
           console.error('Error getting session:', error);
+          if (error.message.includes('fetch') || error.message.includes('network')) {
+            setConnectionError(true);
+          }
           throw error;
         }
 
@@ -64,11 +71,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (mounted) {
           setLoading(false);
           setInitialized(true);
-          toast({
-            title: "Connection Error",
-            description: "Unable to connect to authentication service. Please check your internet connection.",
-            variant: "destructive",
-          });
+          
+          // Detect network errors
+          if (error instanceof Error && 
+             (error.message.includes('fetch') || 
+              error.message.includes('network') || 
+              error.message.includes('connection'))) {
+            setConnectionError(true);
+            toast({
+              title: "Connection Error",
+              description: "Unable to connect to authentication service. Please check your internet connection.",
+              variant: "destructive",
+            });
+          }
         }
       }
     }
@@ -83,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (email: string, password: string, name: string) => {
     try {
       setLoading(true);
+      setConnectionError(false);
       console.log('Attempting signup for:', email);
       const { error } = await supabase.auth.signUp({
         email,
@@ -109,8 +125,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let errorMessage = error.message || "An error occurred during signup";
       
       // Handle network errors
-      if (error.message === "Failed to fetch" || error.code === "NETWORK_ERROR") {
+      if (error.message === "Failed to fetch" || 
+          error.message.includes('Network error') || 
+          error.code === "NETWORK_ERROR") {
         errorMessage = "Network error. Please check your internet connection and try again.";
+        setConnectionError(true);
       }
       
       toast({
@@ -126,6 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
+      setConnectionError(false);
       console.log('Attempting login for:', email);
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -147,8 +167,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let errorMessage = error.message || "Invalid login credentials";
       
       // Handle network errors
-      if (error.message === "Failed to fetch" || error.code === "NETWORK_ERROR") {
+      if (error.message === "Failed to fetch" || 
+          error.message.includes('Network error') || 
+          error.code === "NETWORK_ERROR") {
         errorMessage = "Network error. Please check your internet connection and try again.";
+        setConnectionError(true);
       }
       
       toast({
@@ -166,6 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       setLoading(true);
+      setConnectionError(false);
       console.log('Attempting sign out');
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
@@ -182,8 +206,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let errorMessage = error.message || "Error signing out";
       
       // Handle network errors
-      if (error.message === "Failed to fetch" || error.code === "NETWORK_ERROR") {
+      if (error.message === "Failed to fetch" || 
+          error.message.includes('Network error') || 
+          error.code === "NETWORK_ERROR") {
         errorMessage = "Network error. Please check your internet connection and try again.";
+        setConnectionError(true);
       }
       
       toast({
@@ -203,6 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signOut,
     loading: loading || !initialized,
+    connectionError,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
