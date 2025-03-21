@@ -13,6 +13,7 @@ import { format, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Tontine {
   id: string;
@@ -60,7 +61,7 @@ const TontineDetails: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const user = supabase.auth.user();
+  const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isRecipient, setIsRecipient] = useState(false);
   
