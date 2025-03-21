@@ -27,6 +27,7 @@ interface Tontine {
   members_count?: number;
   total_collected?: number;
   next_payment_date?: string;
+  created_by?: string;
 }
 
 interface Member {
@@ -59,6 +60,9 @@ const TontineDetails: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const user = supabase.auth.user();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isRecipient, setIsRecipient] = useState(false);
   
   const fetchData = async () => {
     if (!id) return;
@@ -79,7 +83,7 @@ const TontineDetails: React.FC = () => {
     try {
       const { data: tontineData, error: tontineError } = await supabase
         .from('tontines')
-        .select('*')
+        .select('*, created_by')
         .eq('id', id)
         .single();
       
@@ -93,6 +97,8 @@ const TontineDetails: React.FC = () => {
         navigate('/tontines');
         return;
       }
+      
+      setIsAdmin(tontineData.created_by === user?.id);
       
       const { count: membersCount, error: countError } = await supabase
         .from('members')
@@ -207,17 +213,26 @@ const TontineDetails: React.FC = () => {
       const enhancedCycles = await Promise.all(
         (cyclesData || []).map(async cycle => {
           let recipientName = 'Unassigned';
+          let isCurrentUserRecipient = false;
           
           if (cycle.recipient_id) {
             const { data: memberData, error: memberError } = await supabase
               .from('members')
-              .select('name')
+              .select('name, email')
               .eq('id', cycle.recipient_id)
               .single();
             
             if (!memberError && memberData) {
               recipientName = memberData.name;
+              
+              if (cycle.status === 'active' && memberData.email === user?.email) {
+                isCurrentUserRecipient = true;
+              }
             }
+          }
+          
+          if (cycle.status === 'active' && isCurrentUserRecipient) {
+            setIsRecipient(true);
           }
           
           let status: 'upcoming' | 'active' | 'completed' = cycle.status as 'upcoming' | 'active' | 'completed';
@@ -311,6 +326,61 @@ const TontineDetails: React.FC = () => {
     // Implement logic to close the add member dialog
   };
   
+  const handleCompleteCycle = async (cycleId: string) => {
+    if (!isAdmin) {
+      toast({
+        title: 'Permission Denied',
+        description: 'Only the tontine administrator can complete cycles.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    try {
+      const { error: updateError } = await supabase
+        .from('cycles')
+        .update({ status: 'completed' })
+        .eq('id', cycleId);
+        
+      if (updateError) throw updateError;
+      
+      const currentCycle = cycles.find(c => c.id === cycleId);
+      if (!currentCycle) throw new Error('Cycle not found');
+      
+      const nextCycle = cycles.find(c => 
+        c.cycle_number === currentCycle.cycle_number + 1 && 
+        c.status === 'upcoming'
+      );
+      
+      if (nextCycle) {
+        const { error: activateError } = await supabase
+          .from('cycles')
+          .update({ status: 'active' })
+          .eq('id', nextCycle.id);
+          
+        if (activateError) throw activateError;
+        
+        toast({
+          title: 'Cycle Completed',
+          description: `Cycle #${currentCycle.cycle_number} has been completed and Cycle #${nextCycle.cycle_number} is now active.`,
+        });
+      } else {
+        toast({
+          title: 'Cycle Completed',
+          description: `Cycle #${currentCycle.cycle_number} has been completed. No more cycles available.`,
+        });
+      }
+      
+      fetchCycles();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to complete cycle.',
+        variant: 'destructive',
+      });
+    }
+  };
+  
   if (loading) {
     return (
       <PageContainer title="Tontine Details">
@@ -340,6 +410,7 @@ const TontineDetails: React.FC = () => {
         tontineStatus={tontine.status || 'active'}
         tontineId={tontine.id}
         onAddMember={openAddMemberDialog}
+        isAdmin={isAdmin}
       />
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -549,14 +620,26 @@ const TontineDetails: React.FC = () => {
                               </Badge>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              {cycle.status !== 'upcoming' && (
-                                <Button variant="outline" size="sm" asChild>
-                                  <Link to={`/payments?cycle=${cycle.id}`}>
-                                    <DollarSign className="mr-1 h-3.5 w-3.5" />
-                                    Payments
-                                  </Link>
-                                </Button>
-                              )}
+                              <div className="flex gap-2 justify-end">
+                                {cycle.status !== 'upcoming' && (
+                                  <Button variant="outline" size="sm" asChild>
+                                    <Link to={`/payments?cycle=${cycle.id}`}>
+                                      <DollarSign className="mr-1 h-3.5 w-3.5" />
+                                      Payments
+                                    </Link>
+                                  </Button>
+                                )}
+                                {isAdmin && cycle.status === 'active' && (
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={() => handleCompleteCycle(cycle.id)}
+                                  >
+                                    <Clock className="mr-1 h-3.5 w-3.5" />
+                                    Complete Cycle
+                                  </Button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -571,12 +654,14 @@ const TontineDetails: React.FC = () => {
                   <p className="text-muted-foreground text-center mb-6 max-w-md">
                     This tontine doesn't have any payment cycles yet. Create a cycle to start collecting payments.
                   </p>
-                  <Button asChild>
-                    <Link to={`/cycles?tontine=${id}`}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create First Cycle
-                    </Link>
-                  </Button>
+                  {isAdmin && (
+                    <Button asChild>
+                      <Link to={`/cycles?tontine=${id}`}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create First Cycle
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -588,4 +673,3 @@ const TontineDetails: React.FC = () => {
 };
 
 export default TontineDetails;
-

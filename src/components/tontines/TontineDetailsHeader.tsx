@@ -1,72 +1,62 @@
 
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit, Plus, Users } from 'lucide-react';
-import { Badge } from "@/components/ui/badge";
+import { UserPlus, ChevronLeft, PencilLine } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface TontineDetailsHeaderProps {
   tontineName: string;
-  tontineStatus: string;
+  tontineStatus: 'active' | 'upcoming' | 'completed' | string;
   tontineId: string;
-  onAddMember: () => void;
+  onAddMember?: () => void;
+  isAdmin?: boolean;
 }
 
 const TontineDetailsHeader: React.FC<TontineDetailsHeaderProps> = ({
   tontineName,
   tontineStatus,
   tontineId,
-  onAddMember
+  onAddMember,
+  isAdmin = false,
 }) => {
-  const navigate = useNavigate();
-
   return (
-    <div className="flex flex-col gap-6 mb-6">
-      <div className="flex items-center gap-2">
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={() => navigate('/tontines')}
-          className="h-8 w-8"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <h1 className="text-2xl font-bold">Tontine Details</h1>
-      </div>
-      
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold">{tontineName}</h2>
-          <Badge variant={tontineStatus === 'active' ? 'default' : 'secondary'}>
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Link to="/tontines" className="text-muted-foreground hover:text-foreground">
+            <ChevronLeft className="h-4 w-4" />
+            <span className="sr-only">Back to Tontines</span>
+          </Link>
+          <h1 className="text-2xl font-bold">{tontineName}</h1>
+          <Badge variant={
+            tontineStatus === 'completed' ? 'outline' : 
+            tontineStatus === 'active' ? 'default' : 'secondary'
+          }>
             {tontineStatus}
           </Badge>
         </div>
-        
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={onAddMember}
-          >
-            <Users className="mr-1.5 h-4 w-4" />
-            Add Member
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => navigate(`/tontines/${tontineId}/edit`)}
-          >
-            <Edit className="mr-1.5 h-4 w-4" />
-            Edit Tontine
-          </Button>
-          <Button 
-            size="sm" 
-            onClick={() => navigate(`/cycles?tontine=${tontineId}`)}
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            New Cycle
-          </Button>
-        </div>
+        <p className="text-muted-foreground">
+          Manage members, cycles, and payments for this tontine.
+        </p>
+      </div>
+      
+      <div className="flex gap-2 self-end md:self-auto">
+        {isAdmin && (
+          <>
+            <Button variant="outline" onClick={onAddMember}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add Member
+            </Button>
+            
+            <Button variant="outline" asChild>
+              <Link to={`/tontines/${tontineId}/edit`}>
+                <PencilLine className="mr-2 h-4 w-4" />
+                Edit Tontine
+              </Link>
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

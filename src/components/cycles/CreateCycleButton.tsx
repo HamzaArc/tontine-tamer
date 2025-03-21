@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -42,6 +41,7 @@ import { CalendarIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/use-auth';
 
 interface Member {
   id: string;
@@ -72,15 +72,38 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
   const [nextCycleNumber, setNextCycleNumber] = useState(1);
   const [nextPayoutDate, setNextPayoutDate] = useState(new Date());
   const [defaultAmount, setDefaultAmount] = useState(2000);
-  
-  // Fetch members and previous cycles to determine defaults
+  const { user } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!user || !tontineId) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('tontines')
+          .select('created_by')
+          .eq('id', tontineId)
+          .single();
+          
+        if (error) throw error;
+        
+        setIsAdmin(data?.created_by === user.id);
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+        setIsAdmin(false);
+      }
+    };
+    
+    checkAdminStatus();
+  }, [tontineId, user]);
+
   useEffect(() => {
     const fetchMembersAndDefaults = async () => {
       if (!tontineId) return;
       
       setLoading(true);
       try {
-        // Fetch members
         const { data: membersData, error: membersError } = await supabase
           .from('members')
           .select('id, name')
@@ -91,7 +114,6 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
         if (membersError) throw membersError;
         setMembers(membersData || []);
 
-        // Get tontine info for default amount
         const { data: tontineData, error: tontineError } = await supabase
           .from('tontines')
           .select('amount')
@@ -104,7 +126,6 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
           setDefaultAmount(tontineData.amount);
         }
         
-        // Find the next cycle number
         const { data: cycles, error: cyclesError } = await supabase
           .from('cycles')
           .select('cycle_number, end_date')
@@ -115,15 +136,11 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
         if (cyclesError) throw cyclesError;
         
         if (cycles && cycles.length > 0) {
-          // Set next cycle number
           setNextCycleNumber(cycles[0].cycle_number + 1);
-          
-          // Calculate next date based on previous cycle's end date
           const lastCycleDate = new Date(cycles[0].end_date);
           const nextDate = addMonths(lastCycleDate, 1);
           setNextPayoutDate(startOfMonth(nextDate));
         } else {
-          // First cycle, start with today's date
           setNextCycleNumber(1);
           const today = new Date();
           setNextPayoutDate(today);
@@ -141,7 +158,7 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
     };
     
     fetchMembersAndDefaults();
-  }, [tontineId, toast, isOpen]); // Add isOpen dependency to refresh when dialog opens
+  }, [tontineId, toast, isOpen]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -152,7 +169,6 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
     },
   });
 
-  // Update form values when defaults change
   useEffect(() => {
     form.setValue('date', nextPayoutDate);
     form.setValue('amount', defaultAmount);
@@ -160,7 +176,6 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
 
   const onSubmit = async (data: FormValues) => {
     try {
-      // Create the new cycle in the database with automatically assigned cycle number
       const { data: cycleData, error: cycleError } = await supabase
         .from('cycles')
         .insert({
@@ -176,7 +191,6 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
         
       if (cycleError) throw cycleError;
       
-      // Update tontine amount if it's different
       if (data.amount !== defaultAmount) {
         const { error: tontineError } = await supabase
           .from('tontines')
@@ -193,7 +207,6 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
         description: `Cycle #${nextCycleNumber} has been created for ${recipientName}.`,
       });
       
-      // Increment the next cycle number locally
       setNextCycleNumber(prev => prev + 1);
       
       setIsOpen(false);
@@ -207,6 +220,10 @@ const CreateCycleButton: React.FC<CreateCycleButtonProps> = ({ tontineId }) => {
       });
     }
   };
+
+  if (!isAdmin) {
+    return null;
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
