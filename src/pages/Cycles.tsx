@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageContainer from '@/components/layout/PageContainer';
@@ -9,7 +8,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useUserRole } from '@/hooks/useUserRole';
 
 interface Tontine {
   id: string;
@@ -17,68 +15,53 @@ interface Tontine {
 }
 
 const Cycles: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const initialTontineId = searchParams.get('tontine');
   const [selectedTontineId, setSelectedTontineId] = useState<string | null>(initialTontineId);
   const [tontines, setTontines] = useState<Tontine[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
-  const { role } = useUserRole(selectedTontineId);
-  const isAdmin = role === 'admin';
   
-  // Update the URL when selectedTontineId changes
-  useEffect(() => {
-    if (selectedTontineId) {
-      setSearchParams({ tontine: selectedTontineId });
-    }
-  }, [selectedTontineId, setSearchParams]);
-  
-  // Initialize selectedTontineId from URL
   useEffect(() => {
     if (initialTontineId) {
       setSelectedTontineId(initialTontineId);
     }
   }, [initialTontineId]);
 
-  const fetchTontines = async () => {
-    if (!user) return;
-
-    try {
-      console.log('Fetching tontines for cycles page');
-      setLoading(true);
-      
-      // Find all tontines the user is associated with (as admin, recipient or member)
-      const { data, error } = await supabase
-        .from('tontines')
-        .select('id, name')
-        .order('created_at', { ascending: false });
-          
-      if (error) {
-        console.error('Error fetching tontines:', error);
-        throw error;
-      }
-      
-      console.log('Tontines retrieved:', data?.length);
-      setTontines(data || []);
-      
-      // If no tontine is selected but we have tontines, select the first one
-      if (!selectedTontineId && data && data.length > 0) {
-        setSelectedTontineId(data[0].id);
-      }
-    } catch (error: any) {
-      console.error('Error fetching tontines:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to fetch tontines',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-  
   useEffect(() => {
+    const fetchTontines = async () => {
+      if (!user) return;
+
+      try {
+        console.log('Fetching tontines for cycles page');
+        const { data, error } = await supabase
+          .from('tontines')
+          .select('id, name')
+          .eq('created_by', user.id)
+          .order('created_at', { ascending: false });
+          
+        if (error) throw error;
+        
+        console.log('Tontines retrieved:', data?.length);
+        setTontines(data || []);
+        
+        // If no tontine is selected but we have tontines, select the first one
+        if (!selectedTontineId && data && data.length > 0) {
+          setSelectedTontineId(data[0].id);
+        }
+      } catch (error: any) {
+        console.error('Error fetching tontines:', error);
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to fetch tontines',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
     fetchTontines();
     
     // Set up realtime subscription with improved channel naming
@@ -88,7 +71,8 @@ const Cycles: React.FC = () => {
         { 
           event: '*', 
           schema: 'public', 
-          table: 'tontines'
+          table: 'tontines',
+          filter: `created_by=eq.${user?.id}`
         }, 
         (payload) => {
           console.log('Tontine change detected in cycles page:', payload);
@@ -100,11 +84,7 @@ const Cycles: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
-  
-  const handleTontineSelect = (tontineId: string) => {
-    setSelectedTontineId(tontineId);
-  };
+  }, [user, toast]);
   
   if (loading) {
     return (
@@ -126,24 +106,35 @@ const Cycles: React.FC = () => {
             <TontineSelector 
               tontines={tontines} 
               selectedTontineId={selectedTontineId} 
-              onSelect={handleTontineSelect}
+              onSelect={setSelectedTontineId}
             />
             
-            {selectedTontineId && isAdmin && (
+            {selectedTontineId && (
               <CreateCycleButton tontineId={selectedTontineId} />
             )}
           </div>
         </div>
         
-        {tontines.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 border rounded-lg bg-muted/20">
-            <h2 className="text-xl font-medium mb-2">No Tontines Found</h2>
-            <p className="text-muted-foreground text-center max-w-md">
-              You haven't created or joined any tontines yet. Go to the Tontines page to create your first tontine.
-            </p>
-          </div>
+        {selectedTontineId ? (
+          <CyclesList tontineId={selectedTontineId} />
         ) : (
-          <CyclesList tontineId={selectedTontineId} userRole={role} />
+          <div className="flex flex-col items-center justify-center p-12 border rounded-lg bg-muted/20">
+            {tontines.length > 0 ? (
+              <>
+                <h2 className="text-xl font-medium mb-2">Select a Tontine</h2>
+                <p className="text-muted-foreground text-center max-w-md">
+                  Please select a tontine from the dropdown above to view and manage its payment cycles.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-medium mb-2">No Tontines Found</h2>
+                <p className="text-muted-foreground text-center max-w-md">
+                  You haven't created any tontines yet. Go to the Tontines page to create your first tontine.
+                </p>
+              </>
+            )}
+          </div>
         )}
       </div>
     </PageContainer>

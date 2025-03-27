@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -9,7 +10,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
-import { RoleBadge } from '@/components/ui/role-badge';
 
 interface SideNavigationProps {
   mobile?: boolean;
@@ -18,7 +18,7 @@ interface SideNavigationProps {
 
 interface UserRole {
   tontineId: string;
-  role: 'admin' | 'recipient' | 'member';
+  role: 'admin' | 'member' | 'recipient';
 }
 
 const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) => {
@@ -35,15 +35,6 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
       try {
         setLoading(true);
         
-        // Get tontines where the user has any role
-        const { data: memberTontines, error: memberError } = await supabase
-          .from('members')
-          .select('tontine_id')
-          .eq('email', user.email)
-          .eq('is_active', true);
-          
-        if (memberError) throw memberError;
-        
         // Get tontines created by the user (admin role)
         const { data: adminTontines, error: adminError } = await supabase
           .from('tontines')
@@ -52,26 +43,55 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
           
         if (adminError) throw adminError;
         
-        // For each tontine, determine the user's role
-        const allTontineIds = new Set([
-          ...(adminTontines?.map(t => t.id) || []),
-          ...(memberTontines?.map(m => m.tontine_id) || [])
-        ]);
-        
-        const rolePromises = Array.from(allTontineIds).map(async (tontineId) => {
-          const { data: roleData } = await supabase.rpc(
-            'get_user_role_in_tontine',
-            { user_id: user.id, tontine_id: tontineId }
-          );
+        // Get tontines where the user is a member
+        const { data: memberTontines, error: memberError } = await supabase
+          .from('members')
+          .select('tontine_id')
+          .eq('email', user.email)
+          .eq('is_active', true);
           
-          return {
-            tontineId,
-            role: roleData as 'admin' | 'recipient' | 'member'
-          };
+        if (memberError) throw memberError;
+        
+        // Get tontines where the user is a recipient of the active cycle
+        const { data: activeCycles, error: cyclesError } = await supabase
+          .from('cycles')
+          .select('tontine_id, recipient_id, members(email)')
+          .eq('status', 'active')
+          .eq('members.email', user.email);
+          
+        if (cyclesError) throw cyclesError;
+        
+        // Combine all roles
+        const rolesMap = new Map<string, UserRole>();
+        
+        // Add admin roles
+        adminTontines?.forEach(tontine => {
+          rolesMap.set(tontine.id, { tontineId: tontine.id, role: 'admin' });
         });
         
-        const rolesData = await Promise.all(rolePromises);
-        setUserRoles(rolesData.filter(r => r.role)); // Filter out null roles
+        // Add member roles (if not already admin)
+        memberTontines?.forEach(membership => {
+          if (!rolesMap.has(membership.tontine_id)) {
+            rolesMap.set(membership.tontine_id, { 
+              tontineId: membership.tontine_id, 
+              role: 'member' 
+            });
+          }
+        });
+        
+        // Add recipient roles (overrides member but not admin)
+        activeCycles?.forEach(cycle => {
+          if (cycle.recipient_id && cycle.members?.email === user.email) {
+            if (rolesMap.has(cycle.tontine_id) && rolesMap.get(cycle.tontine_id)?.role !== 'admin') {
+              rolesMap.set(cycle.tontine_id, { 
+                tontineId: cycle.tontine_id, 
+                role: 'recipient'
+              });
+            }
+          }
+        });
+        
+        setUserRoles(Array.from(rolesMap.values()));
       } catch (error) {
         console.error('Error fetching user roles:', error);
       } finally {
@@ -81,36 +101,6 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
     
     if (user) {
       fetchUserRoles();
-      
-      // Subscribe to changes in cycles and members tables to keep roles updated
-      const cyclesChannel = supabase
-        .channel('sidebar-roles-cycles')
-        .on('postgres_changes', 
-          { 
-            event: '*', 
-            schema: 'public', 
-            table: 'cycles'
-          }, 
-          () => fetchUserRoles()
-        )
-        .subscribe();
-        
-      const membersChannel = supabase
-        .channel('sidebar-roles-members')
-        .on('postgres_changes', 
-          { 
-            event: '*', 
-            schema: 'public', 
-            table: 'members'
-          }, 
-          () => fetchUserRoles()
-        )
-        .subscribe();
-      
-      return () => {
-        supabase.removeChannel(cyclesChannel);
-        supabase.removeChannel(membersChannel);
-      };
     }
   }, [user]);
   
@@ -119,7 +109,6 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
     return location.pathname.startsWith(path);
   };
   
-  // All navigation items available for all authenticated users
   const navigationItems = [
     {
       name: 'Dashboard',
@@ -130,16 +119,19 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
       name: 'Tontines',
       href: '/tontines',
       icon: <Users className="h-5 w-5" />,
+      condition: userRoles.length > 0,
     },
     {
       name: 'Cycles',
       href: '/cycles',
       icon: <CalendarDays className="h-5 w-5" />,
+      condition: userRoles.some(role => role.role === 'admin' || role.role === 'recipient'),
     },
     {
       name: 'Payments',
       href: '/payments',
       icon: <CreditCard className="h-5 w-5" />,
+      condition: userRoles.some(role => role.role === 'admin'),
     },
     {
       name: 'Reports',
@@ -158,6 +150,11 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
     },
   ];
   
+  // Filter navigation items based on conditions
+  const filteredNavigationItems = navigationItems.filter(item => 
+    item.condition === undefined || item.condition
+  );
+  
   return (
     <div className={cn(
       "h-screen flex-shrink-0 border-r bg-background",
@@ -174,7 +171,7 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
           </div>
           
           <div className="space-y-1">
-            {navigationItems.map((item) => (
+            {filteredNavigationItems.map((item) => (
               <Button
                 key={item.href}
                 variant={isActivePath(item.href) ? "secondary" : "ghost"}
