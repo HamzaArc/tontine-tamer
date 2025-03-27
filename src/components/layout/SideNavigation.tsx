@@ -119,9 +119,7 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
     return location.pathname.startsWith(path);
   };
   
-  const hasRecipientRole = userRoles.some(role => role.role === 'recipient');
-  const hasAdminRole = userRoles.some(role => role.role === 'admin');
-  
+  // All navigation items available for all authenticated users
   const navigationItems = [
     {
       name: 'Dashboard',
@@ -132,19 +130,16 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
       name: 'Tontines',
       href: '/tontines',
       icon: <Users className="h-5 w-5" />,
-      condition: userRoles.length > 0,
     },
     {
       name: 'Cycles',
       href: '/cycles',
       icon: <CalendarDays className="h-5 w-5" />,
-      condition: hasAdminRole || hasRecipientRole,
     },
     {
       name: 'Payments',
       href: '/payments',
       icon: <CreditCard className="h-5 w-5" />,
-      condition: hasAdminRole || hasRecipientRole,
     },
     {
       name: 'Reports',
@@ -163,11 +158,6 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
     },
   ];
   
-  // Filter navigation items based on conditions
-  const filteredNavigationItems = navigationItems.filter(item => 
-    item.condition === undefined || item.condition
-  );
-  
   return (
     <div className={cn(
       "h-screen flex-shrink-0 border-r bg-background",
@@ -184,7 +174,7 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
           </div>
           
           <div className="space-y-1">
-            {filteredNavigationItems.map((item) => (
+            {navigationItems.map((item) => (
               <Button
                 key={item.href}
                 variant={isActivePath(item.href) ? "secondary" : "ghost"}

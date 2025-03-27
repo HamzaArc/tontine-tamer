@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
-type UserRole = 'admin' | 'recipient' | 'member' | null;
+export type UserRole = 'admin' | 'recipient' | 'member' | null;
 
 export const useUserRole = (tontineId: string | null) => {
   const [role, setRole] = useState<UserRole>(null);
