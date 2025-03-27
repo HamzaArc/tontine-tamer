@@ -4,13 +4,13 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { UserPlus, ChevronLeft, PencilLine } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface TontineDetailsHeaderProps {
   tontineName: string;
   tontineStatus: 'active' | 'upcoming' | 'completed' | string;
   tontineId: string;
   onAddMember?: () => void;
-  isAdmin?: boolean;
 }
 
 const TontineDetailsHeader: React.FC<TontineDetailsHeaderProps> = ({
@@ -18,8 +18,9 @@ const TontineDetailsHeader: React.FC<TontineDetailsHeaderProps> = ({
   tontineStatus,
   tontineId,
   onAddMember,
-  isAdmin = false,
 }) => {
+  const { isAdmin } = useUserRole(tontineId);
+
   return (
     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
       <div>
