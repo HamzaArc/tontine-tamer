@@ -21,8 +21,8 @@ export const useUserRole = (tontineId: string | null) => {
       try {
         console.log('Fetching user role for tontine:', tontineId);
         const { data, error } = await supabase.rpc('get_user_role_in_tontine', {
-          p_user_id: user.id,
-          p_tontine_id: tontineId
+          user_id: user.id,
+          tontine_id: tontineId
         });
 
         if (error) {

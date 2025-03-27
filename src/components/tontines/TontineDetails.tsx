@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface Tontine {
   id: string;
@@ -62,8 +63,7 @@ const TontineDetails: React.FC = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isRecipient, setIsRecipient] = useState(false);
+  const { isAdmin, isRecipient } = useUserRole(id || null);
   
   const fetchData = async () => {
     if (!id) return;
@@ -98,8 +98,6 @@ const TontineDetails: React.FC = () => {
         navigate('/tontines');
         return;
       }
-      
-      setIsAdmin(tontineData.created_by === user?.id);
       
       const { count: membersCount, error: countError } = await supabase
         .from('members')
