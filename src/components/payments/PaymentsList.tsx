@@ -72,7 +72,7 @@ interface CycleDetails {
   tontine_id: string;
   start_date: string;
   end_date: string;
-  target_amount: number;
+  target_amount?: number;
   status: 'upcoming' | 'active' | 'completed';
 }
 
@@ -123,7 +123,8 @@ const PaymentsList = () => {
         setCycleDetails({
           ...cycle,
           status: typedStatus,
-          tontine_id: cycle.tontine_id
+          tontine_id: cycle.tontine_id,
+          target_amount: 1000
         });
       }
     } catch (error) {

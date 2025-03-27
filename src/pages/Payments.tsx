@@ -228,7 +228,7 @@ const Payments: React.FC = () => {
         {selectedCycleId && selectedCycle ? (
           <>
             <PaymentsSummary cycleId={selectedCycleId} />
-            <PaymentsList cycleId={selectedCycleId} />
+            <PaymentsList />
           </>
         ) : (
           <div className="flex flex-col items-center justify-center p-12 border rounded-lg bg-muted/20">

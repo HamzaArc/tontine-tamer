@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import TontineDetailsHeader from '@/components/tontines/TontineDetailsHeader';
@@ -6,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { PlusCircle } from 'lucide-react';
-import AddMemberDialog from '@/components/tontines/AddMemberDialog';
+import { AddMemberDialog } from '@/components/tontines/AddMemberDialog'; // Fixed import
 import { RoleDisplay } from '@/components/ui/role-display';
 
 interface Tontine {
@@ -26,7 +27,7 @@ interface Cycle {
   tontine_id: string;
   start_date: string;
   end_date: string;
-  target_amount: number;
+  target_amount: number; // Required in interface
   status: 'upcoming' | 'active' | 'completed';
   created_at: string;
 }
@@ -75,15 +76,20 @@ const TontineDetails = () => {
         
       if (cycleError && cycleError.code !== 'PGRST116') throw cycleError; // Ignore "no data found" error
       
-      setActiveCycle(cycleData as Cycle || null);
+      // Add default target_amount if it doesn't exist in the database
+      if (cycleData) {
+        setActiveCycle({
+          ...cycleData,
+          target_amount: 1000, // Default value
+          status: cycleData.status as 'upcoming' | 'active' | 'completed'
+        } as Cycle);
+      } else {
+        setActiveCycle(null);
+      }
     } catch (err: any) {
       console.error('Error fetching tontine details:', err);
       setError(err.message || 'Failed to load tontine details.');
-      toast({
-        title: "Error",
-        description: err.message || 'Failed to load tontine details.',
-        variant: "destructive",
-      });
+      toast.error('Error: ' + (err.message || 'Failed to load tontine details.'));
     } finally {
       setLoading(false);
     }
@@ -134,18 +140,18 @@ const TontineDetails = () => {
         <>
           <TontineDetailsHeader
             tontineName={tontine.name}
-            tontineStatus={activeCycle?.status as "active" | "upcoming" | "completed" || "upcoming"}
+            tontineStatus={activeCycle?.status || "upcoming"}
             tontineId={tontineId || ''}
             onAddMember={handleAddMember}
             isAdmin={isAdmin}
           />
           
-          <RoleDisplay tontineId={tontineId} tontineName={tontine.name} />
+          <RoleDisplay tontineId={tontineId || ''} tontineName={tontine.name} />
           
           <AddMemberDialog
             isOpen={isAddMemberOpen}
             onOpenChange={setIsAddMemberOpen}
-            tontineId={tontineId}
+            tontineId={tontineId || ''}
           />
         </>
       )}

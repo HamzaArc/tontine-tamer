@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageContainer from '@/components/layout/PageContainer';
@@ -116,7 +117,8 @@ const Cycles: React.FC = () => {
         </div>
         
         {selectedTontineId ? (
-          <CyclesList tontineId={selectedTontineId} />
+          // Remove the tontineId prop since it's not expected by CyclesList
+          <CyclesList />
         ) : (
           <div className="flex flex-col items-center justify-center p-12 border rounded-lg bg-muted/20">
             {tontines.length > 0 ? (

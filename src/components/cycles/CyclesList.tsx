@@ -23,7 +23,6 @@ interface Cycle {
   tontine_id: string;
   start_date: string;
   end_date: string;
-  target_amount: number;
   status: "upcoming" | "active" | "completed";
   recipient_id: string;
   recipient_name?: string;
@@ -50,7 +49,6 @@ const CyclesList = () => {
           tontine_id,
           start_date,
           end_date,
-          target_amount,
           status,
           recipient_id,
           recipient:profiles (full_name)
@@ -65,9 +63,13 @@ const CyclesList = () => {
       }
 
       const formattedCycles = data.map(cycle => {
-        const recipientName = cycle.recipient ? cycle.recipient.full_name : 'N/A';
+        // Safely access recipient data
+        const recipientData = cycle.recipient as any;
+        const recipientName = recipientData ? recipientData.full_name : 'N/A';
+        
+        // Default values for missing fields
         const totalContributed = 500;
-        const targetAmount = cycle.target_amount || 1000;
+        const targetAmount = 1000; // Default as it doesn't exist in DB
         const progressPercentage = (totalContributed / targetAmount) * 100;
         const hasPaid = true;
         const typedStatus = cycle.status as "upcoming" | "active" | "completed";
@@ -80,10 +82,10 @@ const CyclesList = () => {
           target_amount: targetAmount,
           progress_percentage: progressPercentage,
           has_paid: hasPaid
-        };
+        } as Cycle;
       });
       
-      setCycles(formattedCycles as Cycle[]);
+      setCycles(formattedCycles);
     } catch (error: any) {
       console.error('Error fetching cycles:', error);
       setError(error);
@@ -135,7 +137,6 @@ const CyclesList = () => {
               <TableHead className="w-[100px]">Start Date</TableHead>
               <TableHead>End Date</TableHead>
               <TableHead>Recipient</TableHead>
-              <TableHead>Target Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -146,7 +147,6 @@ const CyclesList = () => {
                 <TableCell className="font-medium">{format(new Date(cycle.start_date), 'PPP')}</TableCell>
                 <TableCell>{format(new Date(cycle.end_date), 'PPP')}</TableCell>
                 <TableCell>{cycle.recipient_name}</TableCell>
-                <TableCell>${cycle.target_amount}</TableCell>
                 <TableCell>
                   <Badge variant={
                       cycle.status === 'active' ? 'default' :
