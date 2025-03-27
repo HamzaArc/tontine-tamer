@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BookOpen, X, ArrowRight, ArrowLeft } from 'lucide-react';
@@ -92,14 +93,14 @@ export const OnboardingTour = () => {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('*')
+          .select('completed_tour')
           .eq('id', user.id)
           .single();
 
         if (error) throw error;
         
         if (data) {
-          setCompletedTour(false);
+          setCompletedTour(data.completed_tour || false);
         }
       } catch (error) {
         console.error('Error checking tour completion:', error);
@@ -166,8 +167,15 @@ export const OnboardingTour = () => {
     if (!user) return;
     
     try {
-      console.log('Tour completed for user:', user.id);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ completed_tour: true })
+        .eq('id', user.id);
+        
+      if (error) throw error;
+      
       setCompletedTour(true);
+      console.log('Tour marked as completed for user:', user.id);
     } catch (error) {
       console.error('Error updating tour completion status:', error);
     }

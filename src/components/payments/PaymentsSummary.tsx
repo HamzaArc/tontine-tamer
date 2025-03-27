@@ -26,118 +26,113 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   
-  useEffect(() => {
-    const fetchPaymentSummary = async () => {
-      if (!cycleId) {
+  const fetchPaymentSummary = async () => {
+    if (!cycleId) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('Fetching payment summary for cycle:', cycleId);
+      // Fetch cycle details with tontine info
+      const { data: cycleData, error: cycleError } = await supabase
+        .from('cycles')
+        .select(`
+          id,
+          cycle_number,
+          end_date,
+          recipient_id,
+          tontine_id,
+          tontines (
+            name,
+            amount
+          )
+        `)
+        .eq('id', cycleId)
+        .single();
+      
+      if (cycleError) throw cycleError;
+      
+      if (!cycleData) {
         setLoading(false);
         return;
       }
-
-      setLoading(true);
-      try {
-        console.log('Fetching payment summary for cycle:', cycleId);
-        // Fetch cycle details with tontine info
-        const { data: cycleData, error: cycleError } = await supabase
-          .from('cycles')
-          .select(`
-            id,
-            cycle_number,
-            end_date,
-            recipient_id,
-            tontine_id,
-            tontines (
-              name,
-              amount
-            )
-          `)
-          .eq('id', cycleId)
-          .single();
-          
-        if (cycleError) throw cycleError;
-        
-        if (!cycleData) {
-          setLoading(false);
-          return;
-        }
-        
-        // Get recipient name if available
-        let recipientName = 'Unassigned';
-        if (cycleData.recipient_id) {
-          const { data: memberData, error: memberError } = await supabase
-            .from('members')
-            .select('name')
-            .eq('id', cycleData.recipient_id)
-            .single();
-          
-          if (!memberError && memberData) {
-            recipientName = memberData.name;
-          }
-        }
-        
-        // Count total members in tontine
-        const { data: membersData, error: membersError } = await supabase
+      
+      // Get recipient name if available
+      let recipientName = 'Unassigned';
+      if (cycleData.recipient_id) {
+        const { data: memberData, error: memberError } = await supabase
           .from('members')
-          .select('id')
-          .eq('tontine_id', cycleData.tontine_id)
-          .eq('is_active', true);
-          
-        if (membersError) throw membersError;
+          .select('name')
+          .eq('id', cycleData.recipient_id)
+          .single();
         
-        const membersCount = membersData?.length || 0;
-        
-        // Count paid members for this cycle and sum their contributions
-        const { data: payments, error: paymentsError } = await supabase
-          .from('payments')
-          .select('amount, status')
-          .eq('cycle_id', cycleId);
-          
-        if (paymentsError) throw paymentsError;
-        
-        const paidMembers = payments?.filter(payment => payment.status === 'paid') || [];
-        const paidMembersCount = paidMembers.length;
-        const currentAmount = paidMembers.reduce((sum, payment) => sum + Number(payment.amount), 0);
-        
-        // Calculate total expected amount - this is the total amount to be paid to the recipient
-        const totalAmount = cycleData.tontines.amount;
-        
-        // Calculate completion percentage
-        const completionPercentage = totalAmount > 0 
-          ? Math.round((currentAmount / totalAmount) * 100) 
-          : 0;
-        
-        setSummary({
-          cycleNumber: cycleData.cycle_number,
-          recipientName,
-          tontineName: cycleData.tontines.name,
-          payoutDate: cycleData.end_date,
-          totalAmount,
-          currentAmount,
-          completionPercentage,
-          membersCount,
-          paidMembersCount
-        });
-      } catch (error: any) {
-        console.error('Error fetching payment summary:', error);
-        toast({
-          title: 'Error',
-          description: error.message || 'Failed to fetch payment summary',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
+        if (!memberError && memberData) {
+          recipientName = memberData.name;
+        }
       }
-    };
-    
+      
+      // Count total members in tontine
+      const { data: membersData, error: membersError } = await supabase
+        .from('members')
+        .select('id')
+        .eq('tontine_id', cycleData.tontine_id)
+        .eq('is_active', true);
+        
+      if (membersError) throw membersError;
+      
+      const membersCount = membersData?.length || 0;
+      
+      // Count paid members for this cycle and sum their contributions
+      const { data: payments, error: paymentsError } = await supabase
+        .from('payments')
+        .select('amount, status')
+        .eq('cycle_id', cycleId);
+        
+      if (paymentsError) throw paymentsError;
+      
+      const paidMembers = payments?.filter(payment => payment.status === 'paid') || [];
+      const paidMembersCount = paidMembers.length;
+      const currentAmount = paidMembers.reduce((sum, payment) => sum + Number(payment.amount), 0);
+      
+      // Calculate total expected amount - this is the total amount to be paid to the recipient
+      const totalAmount = cycleData.tontines.amount;
+      
+      // Calculate completion percentage
+      const completionPercentage = totalAmount > 0 
+        ? Math.round((currentAmount / totalAmount) * 100) 
+        : 0;
+      
+      setSummary({
+        cycleNumber: cycleData.cycle_number,
+        recipientName,
+        tontineName: cycleData.tontines.name,
+        payoutDate: cycleData.end_date,
+        totalAmount,
+        currentAmount,
+        completionPercentage,
+        membersCount,
+        paidMembersCount
+      });
+    } catch (error: any) {
+      console.error('Error fetching payment summary:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to fetch payment summary',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
     fetchPaymentSummary();
     
-    // Set up realtime subscriptions with unique channel names
-    const paymentsChannelName = `payments-changes-summary-${cycleId}-${Date.now()}`;
-    const cyclesChannelName = `cycles-changes-summary-${cycleId}-${Date.now()}`;
-    
-    console.log('Setting up realtime subscription on channel:', paymentsChannelName);
-    
+    // Set up realtime subscription for payments changes
     const paymentsChannel = supabase
-      .channel(paymentsChannelName)
+      .channel(`payments-realtime-${cycleId}`)
       .on('postgres_changes', 
         { 
           event: '*', 
@@ -150,34 +145,10 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
           fetchPaymentSummary();
         }
       )
-      .subscribe((status) => {
-        console.log(`Realtime subscription status for ${paymentsChannelName}:`, status);
-      });
-      
-    console.log('Setting up realtime subscription on channel:', cyclesChannelName);
-    
-    const cyclesChannel = supabase
-      .channel(cyclesChannelName)
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'cycles',
-          filter: `id=eq.${cycleId}`
-        }, 
-        (payload) => {
-          console.log('Cycle change detected in PaymentsSummary:', payload);
-          fetchPaymentSummary();
-        }
-      )
-      .subscribe((status) => {
-        console.log(`Realtime subscription status for ${cyclesChannelName}:`, status);
-      });
+      .subscribe();
     
     return () => {
-      console.log('Cleaning up supabase channels:', paymentsChannelName, cyclesChannelName);
       supabase.removeChannel(paymentsChannel);
-      supabase.removeChannel(cyclesChannel);
     };
   }, [cycleId]);
   

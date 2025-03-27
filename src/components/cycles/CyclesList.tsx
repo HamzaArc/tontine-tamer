@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { format, isBefore, isEqual, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 
 interface Cycle {
   id: string;
@@ -46,6 +47,7 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   const determineStatus = (
     cycle: any, 
@@ -180,13 +182,8 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
     if (tontineId) {
       fetchCycles();
       
-      const cyclesChannelName = `cycles-changes-list-${tontineId}-${Date.now()}`;
-      const paymentsChannelName = `payments-changes-cycles-list-${tontineId}-${Date.now()}`;
-      
-      console.log('Setting up realtime subscription on channel:', cyclesChannelName);
-      
-      const cyclesChannel = supabase
-        .channel(cyclesChannelName)
+      const cyclesRealTimeChannel = supabase
+        .channel(`cycles-realtime-${tontineId}`)
         .on('postgres_changes', 
           { 
             event: '*', 
@@ -195,37 +192,14 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
             filter: `tontine_id=eq.${tontineId}`
           }, 
           (payload) => {
-            console.log('Cycles change detected in CyclesList:', payload);
+            console.log('Cycle change detected:', payload);
             fetchCycles();
           }
         )
-        .subscribe((status) => {
-          console.log(`Realtime subscription status for ${cyclesChannelName}:`, status);
-        });
-      
-      console.log('Setting up realtime subscription on channel:', paymentsChannelName);
-      
-      const paymentsChannel = supabase
-        .channel(paymentsChannelName)
-        .on('postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'payments'
-          },
-          (payload) => {
-            console.log('Payment change detected in CyclesList:', payload);
-            fetchCycles();
-          }
-        )
-        .subscribe((status) => {
-          console.log(`Realtime subscription status for ${paymentsChannelName}:`, status);
-        });
+        .subscribe();
       
       return () => {
-        console.log('Cleaning up supabase channels:', cyclesChannelName, paymentsChannelName);
-        supabase.removeChannel(cyclesChannel);
-        supabase.removeChannel(paymentsChannel);
+        supabase.removeChannel(cyclesRealTimeChannel);
       };
     }
   }, [tontineId]);
@@ -246,6 +220,10 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
       case 'upcoming': return 'secondary';
       default: return 'default';
     }
+  };
+  
+  const handleViewCycleDetails = (cycleId) => {
+    navigate(`/cycles/${cycleId}`);
   };
   
   if (loading) {
@@ -354,12 +332,10 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          asChild
+                          onClick={() => handleViewCycleDetails(cycle.id)}
                         >
-                          <Link to={`/cycles/${cycle.id}`}>
-                            <LinkIcon className="h-4 w-4" />
-                            <span className="sr-only">Details</span>
-                          </Link>
+                          <LinkIcon className="h-4 w-4" />
+                          <span className="sr-only">Details</span>
                         </Button>
                         <Button
                           variant="ghost"
