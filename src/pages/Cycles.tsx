@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface Tontine {
   id: string;
@@ -23,6 +24,8 @@ const Cycles: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
+  const { role } = useUserRole(selectedTontineId);
+  const isAdmin = role === 'admin';
   
   // Update the URL when selectedTontineId changes
   useEffect(() => {
@@ -45,6 +48,7 @@ const Cycles: React.FC = () => {
       console.log('Fetching tontines for cycles page');
       setLoading(true);
       
+      // Find all tontines the user is associated with (as admin, recipient or member)
       const { data, error } = await supabase
         .from('tontines')
         .select('id, name')
@@ -125,7 +129,7 @@ const Cycles: React.FC = () => {
               onSelect={handleTontineSelect}
             />
             
-            {selectedTontineId && (
+            {selectedTontineId && isAdmin && (
               <CreateCycleButton tontineId={selectedTontineId} />
             )}
           </div>
@@ -135,11 +139,11 @@ const Cycles: React.FC = () => {
           <div className="flex flex-col items-center justify-center p-12 border rounded-lg bg-muted/20">
             <h2 className="text-xl font-medium mb-2">No Tontines Found</h2>
             <p className="text-muted-foreground text-center max-w-md">
-              You haven't created any tontines yet. Go to the Tontines page to create your first tontine.
+              You haven't created or joined any tontines yet. Go to the Tontines page to create your first tontine.
             </p>
           </div>
         ) : (
-          <CyclesList />
+          <CyclesList tontineId={selectedTontineId} userRole={role} />
         )}
       </div>
     </PageContainer>

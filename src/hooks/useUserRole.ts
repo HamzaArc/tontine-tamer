@@ -20,6 +20,7 @@ export const useUserRole = (tontineId: string | null) => {
 
       try {
         setLoading(true);
+        console.log('Fetching user role for tontineId:', tontineId);
         
         // Call the database function to get the user's role
         const { data, error } = await supabase.rpc(
@@ -27,8 +28,12 @@ export const useUserRole = (tontineId: string | null) => {
           { user_id: user.id, tontine_id: tontineId }
         );
         
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching user role:', error);
+          throw error;
+        }
         
+        console.log('User role fetched:', data);
         setRole(data as UserRole);
       } catch (error) {
         console.error('Error fetching user role:', error);
@@ -42,7 +47,7 @@ export const useUserRole = (tontineId: string | null) => {
     
     // Set up a subscription to detect role changes
     if (tontineId && user) {
-      const cyclesChannel = supabase
+      const channel = supabase
         .channel(`role-changes-${tontineId}`)
         .on('postgres_changes', 
           { 
@@ -58,8 +63,26 @@ export const useUserRole = (tontineId: string | null) => {
         )
         .subscribe();
         
+      // Also listen for member changes  
+      const membersChannel = supabase
+        .channel(`members-changes-${tontineId}`)
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'members',
+            filter: `tontine_id=eq.${tontineId}`
+          }, 
+          () => {
+            console.log('Member change detected, refreshing role');
+            fetchUserRole();
+          }
+        )
+        .subscribe();
+        
       return () => {
-        supabase.removeChannel(cyclesChannel);
+        supabase.removeChannel(channel);
+        supabase.removeChannel(membersChannel);
       };
     }
   }, [tontineId, user]);

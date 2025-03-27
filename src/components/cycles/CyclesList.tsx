@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2 } from 'lucide-react';
 import {
@@ -16,6 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { UserRole } from '@/hooks/useUserRole';
 
 interface Cycle {
   id: string;
@@ -32,13 +32,17 @@ interface Cycle {
   cycle_number: number;
 }
 
-const CyclesList = () => {
-  const [searchParams] = useSearchParams();
-  const tontineId = searchParams.get('tontine');
+interface CyclesListProps {
+  tontineId: string | null;
+  userRole: UserRole;
+}
+
+const CyclesList: React.FC<CyclesListProps> = ({ tontineId, userRole }) => {
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const { toast } = useToast();
+  const isAdmin = userRole === 'admin';
 
   useEffect(() => {
     const fetchCycles = async () => {
@@ -192,12 +196,14 @@ const CyclesList = () => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Payment Cycles</h2>
-        <Button asChild>
-          <Link to={`/cycles/new?tontine=${tontineId}`}>
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Create Cycle
-          </Link>
-        </Button>
+        {isAdmin && (
+          <Button asChild>
+            <Link to={`/cycles/new?tontine=${tontineId}`}>
+              <PlusCircle className="h-4 w-4 mr-2" />
+              Create Cycle
+            </Link>
+          </Button>
+        )}
       </div>
       
       <div className="rounded-md border">
@@ -244,12 +250,14 @@ const CyclesList = () => {
                 <TableCell colSpan={6} className="text-center py-8">
                   <div className="flex flex-col items-center space-y-2">
                     <p className="text-muted-foreground">No cycles found for this tontine.</p>
-                    <Button asChild variant="outline" size="sm">
-                      <Link to={`/cycles/new?tontine=${tontineId}`}>
-                        <PlusCircle className="h-4 w-4 mr-2" />
-                        Create First Cycle
-                      </Link>
-                    </Button>
+                    {isAdmin && (
+                      <Button asChild variant="outline" size="sm">
+                        <Link to={`/cycles/new?tontine=${tontineId}`}>
+                          <PlusCircle className="h-4 w-4 mr-2" />
+                          Create First Cycle
+                        </Link>
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
