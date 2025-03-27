@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from '@/contexts/AuthContext';
+import { RoleDisplay } from '@/components/ui/role-display';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface Tontine {
   id: string;
@@ -62,8 +64,8 @@ const TontineDetails: React.FC = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isRecipient, setIsRecipient] = useState(false);
+  const { role } = useUserRole(id || null);
+  const isAdmin = role === 'admin';
   
   const fetchData = async () => {
     if (!id) return;
@@ -414,11 +416,12 @@ const TontineDetails: React.FC = () => {
         isAdmin={isAdmin}
       />
       
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:w-auto md:grid-cols-3">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full mt-4">
+        <TabsList className="grid w-full grid-cols-2 md:w-auto md:grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="members">Members ({tontine.members_count})</TabsTrigger>
-          <TabsTrigger value="cycles" className="hidden md:flex">Cycles ({cycles.length})</TabsTrigger>
+          <TabsTrigger value="cycles">Cycles ({cycles.length})</TabsTrigger>
+          <TabsTrigger value="role">Your Role</TabsTrigger>
         </TabsList>
         
         <TabsContent value="overview" className="space-y-4">
@@ -520,10 +523,12 @@ const TontineDetails: React.FC = () => {
                   Manage members of this tontine
                 </CardDescription>
               </div>
-              <AddMemberDialog 
-                tontineId={id || ''} 
-                onMemberAdded={handleMemberAdded}
-              />
+              {isAdmin && (
+                <AddMemberDialog 
+                  tontineId={id || ''} 
+                  onMemberAdded={handleMemberAdded}
+                />
+              )}
             </CardHeader>
             <CardContent>
               {membersLoading ? (
@@ -545,10 +550,12 @@ const TontineDetails: React.FC = () => {
                   <p className="text-muted-foreground text-center mb-6 max-w-md">
                     This tontine doesn't have any members yet. Add members to start tracking contributions.
                   </p>
-                  <AddMemberDialog 
-                    tontineId={id || ''} 
-                    onMemberAdded={handleMemberAdded}
-                  />
+                  {isAdmin && (
+                    <AddMemberDialog 
+                      tontineId={id || ''} 
+                      onMemberAdded={handleMemberAdded}
+                    />
+                  )}
                 </div>
               )}
             </CardContent>
@@ -565,12 +572,14 @@ const TontineDetails: React.FC = () => {
                 </CardDescription>
               </div>
               <div className="flex gap-2">
-                <Button variant="default" asChild>
-                  <Link to={`/cycles?tontine=${id}`}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create Cycle
-                  </Link>
-                </Button>
+                {isAdmin && (
+                  <Button variant="default" asChild>
+                    <Link to={`/cycles?tontine=${id}`}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Cycle
+                    </Link>
+                  </Button>
+                )}
                 <Button variant="outline" asChild>
                   <Link to={`/cycles?tontine=${id}`}>
                     <Calendar className="mr-2 h-4 w-4" />
@@ -667,6 +676,10 @@ const TontineDetails: React.FC = () => {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        <TabsContent value="role" className="space-y-4">
+          <RoleDisplay tontineId={id || ''} tontineName={tontine.name} />
         </TabsContent>
       </Tabs>
     </PageContainer>

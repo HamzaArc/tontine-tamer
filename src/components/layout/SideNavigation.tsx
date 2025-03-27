@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -10,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
+import { RoleBadge } from '@/components/ui/role-badge';
 
 interface SideNavigationProps {
   mobile?: boolean;
@@ -18,7 +18,7 @@ interface SideNavigationProps {
 
 interface UserRole {
   tontineId: string;
-  role: 'admin' | 'member' | 'recipient';
+  role: 'admin' | 'recipient' | 'member';
 }
 
 const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) => {
@@ -35,15 +35,7 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
       try {
         setLoading(true);
         
-        // Get tontines created by the user (admin role)
-        const { data: adminTontines, error: adminError } = await supabase
-          .from('tontines')
-          .select('id')
-          .eq('created_by', user.id);
-          
-        if (adminError) throw adminError;
-        
-        // Get tontines where the user is a member
+        // Get tontines where the user has any role
         const { data: memberTontines, error: memberError } = await supabase
           .from('members')
           .select('tontine_id')
@@ -52,46 +44,34 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
           
         if (memberError) throw memberError;
         
-        // Get tontines where the user is a recipient of the active cycle
-        const { data: activeCycles, error: cyclesError } = await supabase
-          .from('cycles')
-          .select('tontine_id, recipient_id, members(email)')
-          .eq('status', 'active')
-          .eq('members.email', user.email);
+        // Get tontines created by the user (admin role)
+        const { data: adminTontines, error: adminError } = await supabase
+          .from('tontines')
+          .select('id')
+          .eq('created_by', user.id);
           
-        if (cyclesError) throw cyclesError;
+        if (adminError) throw adminError;
         
-        // Combine all roles
-        const rolesMap = new Map<string, UserRole>();
+        // For each tontine, determine the user's role
+        const allTontineIds = new Set([
+          ...(adminTontines?.map(t => t.id) || []),
+          ...(memberTontines?.map(m => m.tontine_id) || [])
+        ]);
         
-        // Add admin roles
-        adminTontines?.forEach(tontine => {
-          rolesMap.set(tontine.id, { tontineId: tontine.id, role: 'admin' });
+        const rolePromises = Array.from(allTontineIds).map(async (tontineId) => {
+          const { data: roleData } = await supabase.rpc(
+            'get_user_role_in_tontine',
+            { user_id: user.id, tontine_id: tontineId }
+          );
+          
+          return {
+            tontineId,
+            role: roleData as 'admin' | 'recipient' | 'member'
+          };
         });
         
-        // Add member roles (if not already admin)
-        memberTontines?.forEach(membership => {
-          if (!rolesMap.has(membership.tontine_id)) {
-            rolesMap.set(membership.tontine_id, { 
-              tontineId: membership.tontine_id, 
-              role: 'member' 
-            });
-          }
-        });
-        
-        // Add recipient roles (overrides member but not admin)
-        activeCycles?.forEach(cycle => {
-          if (cycle.recipient_id && cycle.members?.email === user.email) {
-            if (rolesMap.has(cycle.tontine_id) && rolesMap.get(cycle.tontine_id)?.role !== 'admin') {
-              rolesMap.set(cycle.tontine_id, { 
-                tontineId: cycle.tontine_id, 
-                role: 'recipient'
-              });
-            }
-          }
-        });
-        
-        setUserRoles(Array.from(rolesMap.values()));
+        const rolesData = await Promise.all(rolePromises);
+        setUserRoles(rolesData.filter(r => r.role)); // Filter out null roles
       } catch (error) {
         console.error('Error fetching user roles:', error);
       } finally {
@@ -101,6 +81,36 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
     
     if (user) {
       fetchUserRoles();
+      
+      // Subscribe to changes in cycles and members tables to keep roles updated
+      const cyclesChannel = supabase
+        .channel('sidebar-roles-cycles')
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'cycles'
+          }, 
+          () => fetchUserRoles()
+        )
+        .subscribe();
+        
+      const membersChannel = supabase
+        .channel('sidebar-roles-members')
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'members'
+          }, 
+          () => fetchUserRoles()
+        )
+        .subscribe();
+      
+      return () => {
+        supabase.removeChannel(cyclesChannel);
+        supabase.removeChannel(membersChannel);
+      };
     }
   }, [user]);
   
@@ -108,6 +118,9 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
     if (path === '/') return location.pathname === path;
     return location.pathname.startsWith(path);
   };
+  
+  const hasRecipientRole = userRoles.some(role => role.role === 'recipient');
+  const hasAdminRole = userRoles.some(role => role.role === 'admin');
   
   const navigationItems = [
     {
@@ -125,13 +138,13 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
       name: 'Cycles',
       href: '/cycles',
       icon: <CalendarDays className="h-5 w-5" />,
-      condition: userRoles.some(role => role.role === 'admin' || role.role === 'recipient'),
+      condition: hasAdminRole || hasRecipientRole,
     },
     {
       name: 'Payments',
       href: '/payments',
       icon: <CreditCard className="h-5 w-5" />,
-      condition: userRoles.some(role => role.role === 'admin'),
+      condition: hasAdminRole || hasRecipientRole,
     },
     {
       name: 'Reports',

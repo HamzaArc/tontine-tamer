@@ -1,16 +1,18 @@
 
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { UserPlus, ChevronLeft, PencilLine } from 'lucide-react';
+import { PlusCircle, ArrowLeft } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
+import { useUserRole } from '@/hooks/useUserRole';
+import { RoleBadge } from '@/components/ui/role-badge';
 
 interface TontineDetailsHeaderProps {
   tontineName: string;
-  tontineStatus: 'active' | 'upcoming' | 'completed' | string;
+  tontineStatus: 'active' | 'upcoming' | 'completed';
   tontineId: string;
-  onAddMember?: () => void;
-  isAdmin?: boolean;
+  onAddMember: () => void;
+  isAdmin: boolean;
 }
 
 const TontineDetailsHeader: React.FC<TontineDetailsHeaderProps> = ({
@@ -18,47 +20,74 @@ const TontineDetailsHeader: React.FC<TontineDetailsHeaderProps> = ({
   tontineStatus,
   tontineId,
   onAddMember,
-  isAdmin = false,
+  isAdmin
 }) => {
+  const navigate = useNavigate();
+  const { role } = useUserRole(tontineId);
+  
   return (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Link to="/tontines" className="text-muted-foreground hover:text-foreground">
-            <ChevronLeft className="h-4 w-4" />
-            <span className="sr-only">Back to Tontines</span>
-          </Link>
+    <div className="flex flex-col space-y-4">
+      <div className="flex items-center gap-2">
+        <Button 
+          variant="ghost" 
+          size="icon"
+          onClick={() => navigate('/tontines')}
+          className="h-8 w-8"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="sr-only">Back</span>
+        </Button>
+        
+        <div className="flex flex-col md:flex-row md:items-center gap-2">
           <h1 className="text-2xl font-bold">{tontineName}</h1>
-          <Badge variant={
-            tontineStatus === 'completed' ? 'outline' : 
-            tontineStatus === 'active' ? 'default' : 'secondary'
-          }>
-            {tontineStatus}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={tontineStatus} />
+            {role && <RoleBadge role={role} />}
+          </div>
         </div>
-        <p className="text-muted-foreground">
-          Manage members, cycles, and payments for this tontine.
-        </p>
       </div>
       
-      <div className="flex gap-2 self-end md:self-auto">
-        {isAdmin && (
-          <>
+      <div className="flex justify-between items-center">
+        <div className="flex gap-2">
+          <Button asChild>
+            <Link to={`/cycles?tontine=${tontineId}`}>
+              View Payment Cycles
+            </Link>
+          </Button>
+          
+          {isAdmin && (
             <Button variant="outline" onClick={onAddMember}>
-              <UserPlus className="mr-2 h-4 w-4" />
+              <PlusCircle className="h-4 w-4 mr-2" />
               Add Member
             </Button>
-            
-            <Button variant="outline" asChild>
-              <Link to={`/tontines/${tontineId}/edit`}>
-                <PencilLine className="mr-2 h-4 w-4" />
-                Edit Tontine
-              </Link>
-            </Button>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </div>
+  );
+};
+
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+  let variant: "default" | "outline" | "secondary" | "destructive" | "success" = "default";
+  
+  switch (status) {
+    case 'active':
+      variant = "default";
+      break;
+    case 'upcoming':
+      variant = "secondary";
+      break;
+    case 'completed':
+      variant = "success";
+      break;
+    default:
+      variant = "outline";
+  }
+  
+  return (
+    <Badge variant={variant} className="capitalize">
+      {status}
+    </Badge>
   );
 };
 

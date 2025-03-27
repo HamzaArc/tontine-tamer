@@ -5,6 +5,9 @@ import { Progress } from '@/components/ui/progress';
 import { Clock, DollarSign, User, Calendar, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useUserRole } from '@/hooks/useUserRole';
+import { RoleBadge } from '@/components/ui/role-badge';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface PaymentsSummaryProps {
   cycleId: string;
@@ -20,12 +23,15 @@ interface PaymentSummary {
   completionPercentage: number;
   membersCount: number;
   paidMembersCount: number;
+  tontineId: string;
 }
 
 const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { role } = useUserRole(summary?.tontineId || null);
   
   const fetchPaymentSummary = async () => {
     if (!cycleId) {
@@ -114,7 +120,8 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
         currentAmount,
         completionPercentage,
         membersCount,
-        paidMembersCount
+        paidMembersCount,
+        tontineId: cycleData.tontine_id
       });
     } catch (error: any) {
       console.error('Error fetching payment summary:', error);
@@ -191,9 +198,12 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
           <div className="flex flex-col space-y-1.5">
             <h3 className="text-sm font-medium text-muted-foreground">Cycle</h3>
             <div className="flex flex-col">
-              <span className="text-xl font-semibold">
-                #{summary.cycleNumber} - {summary.tontineName}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-semibold">
+                  #{summary.cycleNumber} - {summary.tontineName}
+                </span>
+                {role && <RoleBadge role={role} />}
+              </div>
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <User className="h-3 w-3" />
                 Recipient: {summary.recipientName}
