@@ -22,7 +22,7 @@ import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import DeleteTontineDialog from './DeleteTontineDialog';
+import DeleteTontineDialog from '../tontines/DeleteTontineDialog';
 
 interface Tontine {
   id: string;
@@ -104,14 +104,15 @@ const TontineList = () => {
   useEffect(() => {
     fetchTontines();
     
-    // Set up realtime subscription for tontine changes
+    // Set up improved realtime subscription for tontine changes
     const tontinesChannel = supabase
-      .channel('tontines-realtime-list')
+      .channel('tontines-realtime-changes')
       .on('postgres_changes', 
         { 
           event: '*', 
           schema: 'public', 
-          table: 'tontines'
+          table: 'tontines',
+          filter: user ? `created_by=eq.${user.id}` : undefined
         }, 
         (payload) => {
           console.log('Tontine change detected:', payload);
@@ -119,11 +120,44 @@ const TontineList = () => {
         }
       )
       .subscribe();
+      
+    // Also listen for changes to members and cycles tables
+    const membersChannel = supabase
+      .channel('members-tontine-list')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'members'
+        }, 
+        (payload) => {
+          console.log('Member change detected in tontine list:', payload);
+          fetchTontines();
+        }
+      )
+      .subscribe();
+      
+    const cyclesChannel = supabase
+      .channel('cycles-tontine-list')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'cycles'
+        }, 
+        (payload) => {
+          console.log('Cycle change detected in tontine list:', payload);
+          fetchTontines();
+        }
+      )
+      .subscribe();
     
     return () => {
       supabase.removeChannel(tontinesChannel);
+      supabase.removeChannel(membersChannel);
+      supabase.removeChannel(cyclesChannel);
     };
-  }, []);
+  }, [user]);
   
   const handleRefresh = () => {
     fetchTontines();

@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Card, 
   CardContent, 
@@ -21,7 +22,6 @@ import { Badge } from '@/components/ui/badge';
 import { format, isBefore, isEqual, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useNavigate } from 'react-router-dom';
 
 interface Cycle {
   id: string;
@@ -183,7 +183,7 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
       fetchCycles();
       
       const cyclesRealTimeChannel = supabase
-        .channel(`cycles-realtime-${tontineId}`)
+        .channel(`cycles-realtime-changes-${tontineId}`)
         .on('postgres_changes', 
           { 
             event: '*', 
@@ -197,9 +197,26 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
           }
         )
         .subscribe();
+        
+      // Also listen for payment changes as they can affect cycle status
+      const paymentsRealTimeChannel = supabase
+        .channel(`payments-for-cycles-${tontineId}`)
+        .on('postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'payments'
+          },
+          (payload) => {
+            console.log('Payment change detected in CyclesList:', payload);
+            fetchCycles();
+          }
+        )
+        .subscribe();
       
       return () => {
         supabase.removeChannel(cyclesRealTimeChannel);
+        supabase.removeChannel(paymentsRealTimeChannel);
       };
     }
   }, [tontineId]);
@@ -222,7 +239,7 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
     }
   };
   
-  const handleViewCycleDetails = (cycleId) => {
+  const handleViewCycleDetails = (cycleId: string) => {
     navigate(`/cycles/${cycleId}`);
   };
   
@@ -335,7 +352,7 @@ const CyclesList: React.FC<CyclesListProps> = ({ tontineId }) => {
                           onClick={() => handleViewCycleDetails(cycle.id)}
                         >
                           <LinkIcon className="h-4 w-4" />
-                          <span className="sr-only">Details</span>
+                          <span className="sr-only">View Details</span>
                         </Button>
                         <Button
                           variant="ghost"

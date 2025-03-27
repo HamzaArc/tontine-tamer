@@ -133,7 +133,7 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
     
     // Set up realtime subscription for payments changes
     const paymentsChannel = supabase
-      .channel(`payments-realtime-${cycleId}`)
+      .channel(`payments-summary-${cycleId}`)
       .on('postgres_changes', 
         { 
           event: '*', 
@@ -148,8 +148,25 @@ const PaymentsSummary: React.FC<PaymentsSummaryProps> = ({ cycleId }) => {
       )
       .subscribe();
     
+    // Also listen for member changes since they can affect the payment calculations
+    const membersChannel = supabase
+      .channel(`members-summary-${cycleId}`)
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'members'
+        },
+        (payload) => {
+          console.log('Member change detected in PaymentsSummary:', payload);
+          fetchPaymentSummary();
+        }
+      )
+      .subscribe();
+    
     return () => {
       supabase.removeChannel(paymentsChannel);
+      supabase.removeChannel(membersChannel);
     };
   }, [cycleId]);
   
