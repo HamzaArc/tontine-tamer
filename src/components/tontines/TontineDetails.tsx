@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { PlusCircle } from 'lucide-react';
-import { AddMemberDialog } from '@/components/tontines/AddMemberDialog'; // Fixed import
+import { AddMemberDialog } from '@/components/tontines/AddMemberDialog'; // Using named import
 import { RoleDisplay } from '@/components/ui/role-display';
 
 interface Tontine {
@@ -39,7 +39,7 @@ const TontineDetails = () => {
   const [activeCycle, setActiveCycle] = useState<Cycle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+  const [isAddMemberDialogVisible, setIsAddMemberDialogVisible] = useState(false);
   const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isRecipient, setIsRecipient] = useState(false);
@@ -123,7 +123,7 @@ const TontineDetails = () => {
   }, [tontineId, user]);
   
   const handleAddMember = () => {
-    setIsAddMemberOpen(true);
+    setIsAddMemberDialogVisible(true);
   };
   
   if (loading) {
@@ -148,10 +148,10 @@ const TontineDetails = () => {
           
           <RoleDisplay tontineId={tontineId || ''} tontineName={tontine.name} />
           
+          {/* Using the AddMemberDialog without isOpen and onOpenChange props */}
           <AddMemberDialog
-            isOpen={isAddMemberOpen}
-            onOpenChange={setIsAddMemberOpen}
             tontineId={tontineId || ''}
+            onMemberAdded={() => fetchTontineDetails()}
           />
         </>
       )}
