@@ -91,17 +91,23 @@ export const OnboardingTour = () => {
       if (!user) return;
 
       try {
+        // Use localStorage as a fallback since completed_tour doesn't exist on profiles yet
+        const hasCompletedTour = localStorage.getItem(`tour_completed_${user.id}`);
+        if (hasCompletedTour === 'true') {
+          setCompletedTour(true);
+          return;
+        }
+
         const { data, error } = await supabase
           .from('profiles')
-          .select('completed_tour')
+          .select('*')
           .eq('id', user.id)
           .single();
 
         if (error) throw error;
         
-        if (data) {
-          setCompletedTour(data.completed_tour || false);
-        }
+        // We'll just use localStorage since the field doesn't exist yet
+        setCompletedTour(false);
       } catch (error) {
         console.error('Error checking tour completion:', error);
       }
@@ -167,13 +173,10 @@ export const OnboardingTour = () => {
     if (!user) return;
     
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ completed_tour: true })
-        .eq('id', user.id);
-        
-      if (error) throw error;
+      // Store completion status in localStorage as a temporary solution
+      localStorage.setItem(`tour_completed_${user.id}`, 'true');
       
+      // We'll update in Supabase once the field is added
       setCompletedTour(true);
       console.log('Tour marked as completed for user:', user.id);
     } catch (error) {
