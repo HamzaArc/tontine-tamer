@@ -231,7 +231,7 @@ const TontineDetails: React.FC = () => {
           }
           
           if (cycle.status === 'active' && isCurrentUserRecipient) {
-            setIsRecipient(true);
+            
           }
           
           let status: 'upcoming' | 'active' | 'completed' = cycle.status as 'upcoming' | 'active' | 'completed';

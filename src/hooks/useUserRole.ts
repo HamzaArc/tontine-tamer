@@ -20,6 +20,7 @@ export const useUserRole = (tontineId: string | null) => {
 
       try {
         console.log('Fetching user role for tontine:', tontineId);
+        // Use direct object matching for the parameters to match the function definition
         const { data, error } = await supabase.rpc('get_user_role_in_tontine', {
           user_id: user.id,
           tontine_id: tontineId
@@ -43,5 +44,11 @@ export const useUserRole = (tontineId: string | null) => {
     fetchUserRole();
   }, [user, tontineId]);
 
-  return { role, loading, isAdmin: role === 'admin', isRecipient: role === 'recipient', isMember: role === 'member' };
+  return { 
+    role, 
+    loading, 
+    isAdmin: role === 'admin', 
+    isRecipient: role === 'recipient', 
+    isMember: role === 'member' || role === 'admin' || role === 'recipient'
+  };
 };
