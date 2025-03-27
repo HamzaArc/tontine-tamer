@@ -18,6 +18,7 @@ export type Database = {
           recipient_id: string | null
           start_date: string
           status: string
+          target_amount: number | null
           tontine_id: string
           updated_at: string
         }
@@ -29,6 +30,7 @@ export type Database = {
           recipient_id?: string | null
           start_date: string
           status?: string
+          target_amount?: number | null
           tontine_id: string
           updated_at?: string
         }
@@ -40,6 +42,7 @@ export type Database = {
           recipient_id?: string | null
           start_date?: string
           status?: string
+          target_amount?: number | null
           tontine_id?: string
           updated_at?: string
         }
@@ -286,6 +289,24 @@ export type Database = {
           tontine_id: string
         }
         Returns: string
+      }
+      is_tontine_admin: {
+        Args: {
+          tontine_id: string
+        }
+        Returns: boolean
+      }
+      is_tontine_member: {
+        Args: {
+          tontine_id: string
+        }
+        Returns: boolean
+      }
+      is_tontine_recipient: {
+        Args: {
+          tontine_id: string
+        }
+        Returns: boolean
       }
     }
     Enums: {

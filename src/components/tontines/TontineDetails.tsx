@@ -7,8 +7,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { PlusCircle } from 'lucide-react';
-import { AddMemberDialog } from '@/components/tontines/AddMemberDialog'; // Using named import
+import { AddMemberDialog } from '@/components/tontines/AddMemberDialog';
 import { RoleDisplay } from '@/components/ui/role-display';
+import { useUserRole } from '@/hooks/useUserRole';
+import { Loader2 } from 'lucide-react';
 
 interface Tontine {
   id: string;
@@ -27,7 +29,7 @@ interface Cycle {
   tontine_id: string;
   start_date: string;
   end_date: string;
-  target_amount: number; // Required in interface
+  target_amount: number;
   status: 'upcoming' | 'active' | 'completed';
   created_at: string;
 }
@@ -41,8 +43,7 @@ const TontineDetails = () => {
   const [error, setError] = useState<string | null>(null);
   const [isAddMemberDialogVisible, setIsAddMemberDialogVisible] = useState(false);
   const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isRecipient, setIsRecipient] = useState(false);
+  const { role, loading: roleLoading } = useUserRole(tontineId);
   
   const fetchTontineDetails = async () => {
     if (!tontineId) {
@@ -55,6 +56,8 @@ const TontineDetails = () => {
     setError(null);
     
     try {
+      console.log('Fetching tontine details for ID:', tontineId);
+      
       // Fetch tontine details
       const { data: tontineData, error: tontineError } = await supabase
         .from('tontines')
@@ -62,8 +65,12 @@ const TontineDetails = () => {
         .eq('id', tontineId)
         .single();
         
-      if (tontineError) throw tontineError;
+      if (tontineError) {
+        console.error('Error fetching tontine:', tontineError);
+        throw tontineError;
+      }
       
+      console.log('Tontine data received:', tontineData);
       setTontine(tontineData as Tontine);
       
       // Fetch active cycle
@@ -74,15 +81,15 @@ const TontineDetails = () => {
         .eq('status', 'active')
         .single();
         
-      if (cycleError && cycleError.code !== 'PGRST116') throw cycleError; // Ignore "no data found" error
+      if (cycleError && cycleError.code !== 'PGRST116') {
+        console.error('Error fetching cycle:', cycleError);
+        throw cycleError; // Ignore "no data found" error
+      }
       
-      // Add default target_amount if it doesn't exist in the database
+      console.log('Active cycle data:', cycleData);
+      
       if (cycleData) {
-        setActiveCycle({
-          ...cycleData,
-          target_amount: 1000, // Default value
-          status: cycleData.status as 'upcoming' | 'active' | 'completed'
-        } as Cycle);
+        setActiveCycle(cycleData as Cycle);
       } else {
         setActiveCycle(null);
       }
@@ -98,27 +105,6 @@ const TontineDetails = () => {
   useEffect(() => {
     if (tontineId) {
       fetchTontineDetails();
-      
-      // Check user role in this tontine
-      const checkUserRole = async () => {
-        if (!user) return;
-        
-        try {
-          const { data: roleData, error } = await supabase.rpc(
-            'get_user_role_in_tontine',
-            { user_id: user.id, tontine_id: tontineId }
-          );
-          
-          if (error) throw error;
-          
-          setIsAdmin(roleData === 'admin');
-          setIsRecipient(roleData === 'recipient');
-        } catch (error) {
-          console.error('Error checking user role:', error);
-        }
-      };
-      
-      checkUserRole();
     }
   }, [tontineId, user]);
   
@@ -126,12 +112,25 @@ const TontineDetails = () => {
     setIsAddMemberDialogVisible(true);
   };
   
-  if (loading) {
-    return <div>Loading tontine details...</div>;
+  const isAdmin = role === 'admin';
+  const isRecipient = role === 'recipient';
+  
+  if (loading || roleLoading) {
+    return (
+      <div className="container mx-auto py-6 flex justify-center items-center min-h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
   
   if (error) {
-    return <div>Error: {error}</div>;
+    return (
+      <div className="container mx-auto py-6">
+        <div className="bg-destructive/10 p-4 rounded-md text-destructive">
+          Error: {error}
+        </div>
+      </div>
+    );
   }
   
   return (
@@ -148,7 +147,6 @@ const TontineDetails = () => {
           
           <RoleDisplay tontineId={tontineId || ''} tontineName={tontine.name} />
           
-          {/* Using the AddMemberDialog without isOpen and onOpenChange props */}
           <AddMemberDialog
             tontineId={tontineId || ''}
             onMemberAdded={() => fetchTontineDetails()}
