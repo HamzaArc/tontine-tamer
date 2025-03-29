@@ -1,4 +1,7 @@
 
+// We'll focus on the fetchTontines function in the TontineList component,
+// which needs to work with our restored policies
+
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
