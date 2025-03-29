@@ -34,64 +34,95 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
       
       try {
         setLoading(true);
+        console.log('Fetching user roles for navigation');
         
-        // Get tontines created by the user (admin role)
+        // Simplified approach: first get tontines where user is admin
         const { data: adminTontines, error: adminError } = await supabase
           .from('tontines')
           .select('id')
           .eq('created_by', user.id);
           
-        if (adminError) throw adminError;
+        if (adminError) {
+          console.error('Error fetching admin tontines:', adminError);
+          throw adminError;
+        }
         
-        // Get tontines where the user is a member
-        const { data: memberTontines, error: memberError } = await supabase
+        // Convert admin tontines to role objects
+        const roles: UserRole[] = (adminTontines || []).map(tontine => ({
+          tontineId: tontine.id,
+          role: 'admin'
+        }));
+        
+        // Next get memberships (separate query to avoid recursion)
+        const { data: memberships, error: memberError } = await supabase
           .from('members')
-          .select('tontine_id')
+          .select('id, tontine_id')
           .eq('email', user.email)
           .eq('is_active', true);
           
-        if (memberError) throw memberError;
-        
-        // Get tontines where the user is a recipient of the active cycle
-        const { data: activeCycles, error: cyclesError } = await supabase
-          .from('cycles')
-          .select('tontine_id, recipient_id, members(email)')
-          .eq('status', 'active')
-          .eq('members.email', user.email);
-          
-        if (cyclesError) throw cyclesError;
-        
-        // Combine all roles
-        const rolesMap = new Map<string, UserRole>();
-        
-        // Add admin roles
-        adminTontines?.forEach(tontine => {
-          rolesMap.set(tontine.id, { tontineId: tontine.id, role: 'admin' });
-        });
+        if (memberError) {
+          console.error('Error fetching member tontines:', memberError);
+          throw memberError;
+        }
         
         // Add member roles (if not already admin)
-        memberTontines?.forEach(membership => {
-          if (!rolesMap.has(membership.tontine_id)) {
-            rolesMap.set(membership.tontine_id, { 
-              tontineId: membership.tontine_id, 
-              role: 'member' 
+        for (const membership of memberships || []) {
+          // Skip if already added as admin
+          if (!roles.some(r => r.tontineId === membership.tontine_id)) {
+            roles.push({
+              tontineId: membership.tontine_id,
+              role: 'member'
             });
           }
-        });
+        }
         
-        // Add recipient roles (overrides member but not admin)
-        activeCycles?.forEach(cycle => {
-          if (cycle.recipient_id && cycle.members?.email === user.email) {
-            if (rolesMap.has(cycle.tontine_id) && rolesMap.get(cycle.tontine_id)?.role !== 'admin') {
-              rolesMap.set(cycle.tontine_id, { 
-                tontineId: cycle.tontine_id, 
-                role: 'recipient'
-              });
+        // Finally check for recipient roles in active cycles
+        const { data: activeCycles, error: cycleError } = await supabase
+          .from('cycles')
+          .select('tontine_id, recipient_id')
+          .eq('status', 'active');
+          
+        if (cycleError) {
+          console.error('Error fetching active cycles:', cycleError);
+          throw cycleError;
+        }
+        
+        // Get recipient memberships
+        if (activeCycles && activeCycles.length > 0) {
+          const recipientIds = activeCycles.map(cycle => cycle.recipient_id).filter(Boolean);
+          
+          if (recipientIds.length > 0) {
+            const { data: recipientMemberships, error: recipientError } = await supabase
+              .from('members')
+              .select('id, tontine_id')
+              .in('id', recipientIds)
+              .eq('email', user.email);
+              
+            if (recipientError) {
+              console.error('Error fetching recipient status:', recipientError);
+              throw recipientError;
+            }
+            
+            // Update roles for recipients (overriding member but not admin)
+            for (const membership of recipientMemberships || []) {
+              const roleIndex = roles.findIndex(r => r.tontineId === membership.tontine_id);
+              
+              if (roleIndex >= 0) {
+                if (roles[roleIndex].role !== 'admin') {
+                  roles[roleIndex].role = 'recipient';
+                }
+              } else {
+                roles.push({
+                  tontineId: membership.tontine_id,
+                  role: 'recipient'
+                });
+              }
             }
           }
-        });
+        }
         
-        setUserRoles(Array.from(rolesMap.values()));
+        console.log('User roles fetched for navigation:', roles);
+        setUserRoles(roles);
       } catch (error) {
         console.error('Error fetching user roles:', error);
       } finally {
@@ -119,7 +150,7 @@ const SideNavigation: React.FC<SideNavigationProps> = ({ mobile, onNavigate }) =
       name: 'Tontines',
       href: '/tontines',
       icon: <Users className="h-5 w-5" />,
-      condition: userRoles.length > 0,
+      condition: true, // Show to all logged in users
     },
     {
       name: 'Cycles',

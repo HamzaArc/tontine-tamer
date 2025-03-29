@@ -19,21 +19,83 @@ export const useUserRole = (tontineId: string | null) => {
       }
 
       try {
-        console.log('Fetching user role for tontine:', tontineId);
+        console.log('Fetching user role for tontine:', tontineId, 'user:', user.id);
         
-        // Use a structured object for parameters to avoid parameter name issues
-        const { data, error } = await supabase.rpc('get_user_role_in_tontine', {
-          user_id: user.id,
-          tontine_id: tontineId
-        });
-
-        if (error) {
-          console.error('Error fetching user role:', error);
-          throw error;
+        // Direct query approach without RPC
+        // First check if user is admin (creator)
+        const { data: tontineData, error: tontineError } = await supabase
+          .from('tontines')
+          .select('created_by')
+          .eq('id', tontineId)
+          .single();
+          
+        if (tontineError) {
+          console.error('Error fetching tontine data:', tontineError);
+          throw tontineError;
         }
-
-        console.log('User role from RPC:', data);
-        setRole(data as TontineRole);
+        
+        if (tontineData && tontineData.created_by === user.id) {
+          console.log('User is admin of tontine');
+          setRole('admin');
+          setLoading(false);
+          return;
+        }
+        
+        // Next check if user is a recipient of active cycle
+        const { data: cycleData, error: cycleError } = await supabase
+          .from('cycles')
+          .select('recipient_id')
+          .eq('tontine_id', tontineId)
+          .eq('status', 'active');
+          
+        if (cycleError) {
+          console.error('Error fetching cycle data:', cycleError);
+          throw cycleError;
+        }
+        
+        if (cycleData && cycleData.length > 0) {
+          const recipientIds = cycleData.map(cycle => cycle.recipient_id);
+          
+          const { data: memberData, error: memberError } = await supabase
+            .from('members')
+            .select('id, email')
+            .in('id', recipientIds)
+            .eq('email', user.email)
+            .single();
+            
+          if (memberError && memberError.code !== 'PGRST116') {
+            console.error('Error checking recipient status:', memberError);
+            throw memberError;
+          }
+          
+          if (memberData) {
+            console.log('User is recipient in tontine');
+            setRole('recipient');
+            setLoading(false);
+            return;
+          }
+        }
+        
+        // Finally check if user is a regular member
+        const { data: memberData, error: memberError } = await supabase
+          .from('members')
+          .select('id')
+          .eq('tontine_id', tontineId)
+          .eq('email', user.email)
+          .eq('is_active', true);
+          
+        if (memberError) {
+          console.error('Error checking member status:', memberError);
+          throw memberError;
+        }
+        
+        if (memberData && memberData.length > 0) {
+          console.log('User is member of tontine');
+          setRole('member');
+        } else {
+          console.log('User has no role in tontine');
+          setRole(null);
+        }
       } catch (error: any) {
         console.error('Error in useUserRole hook:', error);
         setRole(null);
