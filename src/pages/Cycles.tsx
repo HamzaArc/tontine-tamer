@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageContainer from '@/components/layout/PageContainer';
@@ -9,7 +8,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useUserRole } from '@/hooks/useUserRole';
 
 interface Tontine {
   id: string;
@@ -24,7 +22,6 @@ const Cycles: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
-  const { isAdmin } = useUserRole(selectedTontineId);
   
   useEffect(() => {
     if (initialTontineId) {
@@ -38,10 +35,10 @@ const Cycles: React.FC = () => {
 
       try {
         console.log('Fetching tontines for cycles page');
-        // Using the RPC function to get tontines where user has a role
         const { data, error } = await supabase
           .from('tontines')
           .select('id, name')
+          .eq('created_by', user.id)
           .order('created_at', { ascending: false });
           
         if (error) throw error;
@@ -74,7 +71,8 @@ const Cycles: React.FC = () => {
         { 
           event: '*', 
           schema: 'public', 
-          table: 'tontines'
+          table: 'tontines',
+          filter: `created_by=eq.${user?.id}`
         }, 
         (payload) => {
           console.log('Tontine change detected in cycles page:', payload);
@@ -111,7 +109,7 @@ const Cycles: React.FC = () => {
               onSelect={setSelectedTontineId}
             />
             
-            {selectedTontineId && isAdmin && (
+            {selectedTontineId && (
               <CreateCycleButton tontineId={selectedTontineId} />
             )}
           </div>
