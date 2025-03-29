@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
@@ -7,7 +8,7 @@ import {
   CardTitle 
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Search, RefreshCw, Users, Calendar, DollarSign, Edit, Trash2, Loader2 } from 'lucide-react';
+import { Search, RefreshCw, Users, Calendar, DollarSign, Edit, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { 
   Table, 
@@ -39,6 +40,7 @@ const TontineList = () => {
   const [tontines, setTontines] = useState<Tontine[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedTontineId, setSelectedTontineId] = useState<string | null>(null);
@@ -49,13 +51,13 @@ const TontineList = () => {
     if (!user) return;
     
     setRefreshing(true);
+    setError(null);
     try {
       console.log('Fetching tontines for user:', user.id);
       
       const { data, error } = await supabase
         .from('tontines')
         .select('*')
-        .eq('created_by', user.id)
         .order('created_at', { ascending: false });
         
       if (error) throw error;
@@ -90,6 +92,7 @@ const TontineList = () => {
       setTontines(enhancedTontines);
     } catch (error: any) {
       console.error('Error fetching tontines:', error);
+      setError(error.message || 'Failed to fetch tontines');
       toast({
         title: 'Error',
         description: error.message || 'Failed to fetch tontines',
@@ -111,8 +114,7 @@ const TontineList = () => {
         { 
           event: '*', 
           schema: 'public', 
-          table: 'tontines',
-          filter: user ? `created_by=eq.${user.id}` : undefined
+          table: 'tontines'
         }, 
         (payload) => {
           console.log('Tontine change detected:', payload);
@@ -200,7 +202,7 @@ const TontineList = () => {
   
   const filteredTontines = tontines.filter(tontine => 
     tontine.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    tontine.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (tontine.description && tontine.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
   
   if (loading) {
@@ -209,6 +211,24 @@ const TontineList = () => {
         <CardContent className="py-10">
           <div className="flex justify-center items-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="py-10">
+          <div className="flex flex-col justify-center items-center gap-4">
+            <AlertCircle className="h-12 w-12 text-destructive" />
+            <h3 className="text-xl font-semibold">Error Loading Tontines</h3>
+            <p className="text-muted-foreground text-center">{error}</p>
+            <Button onClick={handleRefresh} variant="outline">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Try Again
+            </Button>
           </div>
         </CardContent>
       </Card>
